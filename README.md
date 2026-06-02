@@ -85,6 +85,9 @@ A>
 | `REN old new` / `RENAME old new` | Rename a file; wildcards supported |
 | `EDIT file` | Full-screen text editor — view, edit and save a file |
 | `CREATE name` | Create an empty (zero-byte) file |
+| `MKDIR dir` / `MD dir` | Create a subdirectory |
+| `RMDIR dir` / `RD dir` | Remove an empty subdirectory |
+| `CD [path]` / `CHDIR [path]` | Display or change the current directory |
 | `CHKDSK` | Show total and free disk space |
 | `DATE [mm-dd-yy]` | Display or set the date |
 | `TIME [hh:mm[:ss]]` | Display or set the time |
@@ -165,6 +168,42 @@ A>EDIT NOTES.TXT
 
 ---
 
+## Subdirectory Navigation
+
+`MKDIR`, `RMDIR`, `CD`, and their aliases (`MD`, `RD`, `CHDIR`) extend the original flat MS-DOS 1.25 filesystem with full subdirectory support.  Directories can be nested to arbitrary depth.  All file commands (`DIR`, `TYPE`, `COPY`, `DEL`, `EDIT`, `CREATE`, …) operate on the **current directory** automatically.
+
+```
+A>MKDIR DOCS
+A>CD DOCS
+A:\DOCS>MKDIR WORK
+A:\DOCS>CD WORK
+A:\DOCS\WORK>CREATE NOTE.TXT
+A:\DOCS\WORK>CD ..
+A:\DOCS>CD ..
+A>
+```
+
+| Command | Action |
+|---------|--------|
+| `MKDIR name` / `MD name` | Create a subdirectory in the current directory |
+| `RMDIR name` / `RD name` | Remove an empty subdirectory |
+| `CD name` | Enter a subdirectory |
+| `CD ..` | Go up one level |
+| `CD \` | Return to root |
+| `CD` | Print the current path |
+
+The shell prompt reflects the current location:
+
+```
+A>              ← root
+A:\DOCS>        ← inside DOCS
+A:\DOCS\WORK>   ← nested inside WORK
+```
+
+The kernel's directory layer (`disk_dirread`, `findname_impl`) is fully context-aware: the current directory cluster is stored in `dos->curdir_clus[drive]` and consulted on every directory operation, so no command-level changes were needed to make file ops subdirectory-aware.
+
+---
+
 ## Architecture
 
 ```
@@ -227,7 +266,7 @@ The `--format` flag creates a fresh image with a correct BPB, two FAT copies, an
 ## Limitations
 
 - **No external command execution.** `.COM` and `.EXE` files on the disk can be found by the shell, but cannot be run — that would require an x86 emulator.
-- **No subdirectories.** MS-DOS 1.x had a flat root-only directory; `CD`, `MD`, and `RD` do not exist.
+- **Subdirectory depth** is limited in practice by the root directory entry count (112 entries for 720 KB images) and by available clusters.
 - **FAT12 only.** FAT16/FAT32 images will not load.
 - **Single disk buffer.** As in the original, only one sector is cached in RAM at a time.
 - **Printer output** goes to `stderr` on the host.

@@ -29,6 +29,8 @@ typedef struct dos_s {
     uint8_t  num_drives;            /* logical drive count */
     uint8_t  num_io;                /* physical drive table count */
     uint8_t  curdrv;                /* current drive (0=A) */
+    uint16_t curdir_clus[MAX_DRIVES]; /* current dir cluster per drive (0=root) */
+    char     curdir_path[MAX_DRIVES][64]; /* display path e.g. "\DOCS\WORK" */
     dpb_t    drvtab[MAX_DRIVES];    /* DPB array */
     fat_buf_t fat_pool[MAX_DRIVES]; /* one FAT buffer per drive */
 

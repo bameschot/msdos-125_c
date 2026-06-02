@@ -37,18 +37,18 @@ src/
 
 | File | Lines |
 |------|-------|
-| `command/command.c` | 880 |
+| `command/command.c` | 1 200 |
 | `host/bios_host.c` | 605 |
 | `command/edit.c` | 610 |
-| `kernel/fcb.c` | 582 |
+| `kernel/fcb.c` | 590 |
 | `kernel/fileio.c` | 447 |
 | `kernel/kernel.c` | 375 |
 | `kernel/chardev.c` | 235 |
 | `kernel/fat.c` | 228 |
-| `kernel/disk.c` | 200 |
+| `kernel/disk.c` | 215 |
 | `kernel/datetime.c` | 172 |
-| Headers (all) | ~560 |
-| **Total** | **~5 100** |
+| Headers (all) | ~570 |
+| **Total** | **~5 250** |
 
 ---
 
@@ -188,6 +188,8 @@ typedef struct dos_s {
 
     // Drives
     uint8_t  num_drives, num_io, curdrv;
+    uint16_t curdir_clus[MAX_DRIVES]; // current directory cluster per drive (0 = root)
+    char     curdir_path[MAX_DRIVES][64]; // display path e.g. "\DOCS\WORK"
     dpb_t    drvtab[MAX_DRIVES];      // DPB array (one per logical drive)
     fat_buf_t fat_pool[MAX_DRIVES];   // FAT buffers; fat_pool[i].data == dpb.fat
 
@@ -203,7 +205,7 @@ typedef struct dos_s {
 
     // Directory sector buffer (separate from data buffer)
     uint8_t  dirbuf[MAX_SEC_SIZE];
-    uint32_t dirbufid;    // (devnum<<24)|block, 0xFFFFFFFF = empty
+    uint32_t dirbufid;    // (devnum<<24)|absolute_sector, 0xFFFFFFFF = empty
     uint8_t  dirtydir;
 
     // Date / time
@@ -279,7 +281,7 @@ Two independent sector buffers:
 | Buffer | Field | Purpose |
 |--------|-------|---------|
 | Data | `dos->buffer` + `bufsecno` + `dirtybuf` | Single-sector write-through cache for file data |
-| Directory | `dos->dirbuf` + `dirbufid` + `dirtydir` | One root-directory sector |
+| Directory | `dos->dirbuf` + `dirbufid` + `dirtydir` | One directory sector (root or subdir) |
 
 ```c
 int      disk_fatread(dos_t*);                    // ensure FAT current for dos->thisdrv
@@ -294,6 +296,21 @@ int      disk_chkdirwrite(dos_t*, dpb_t*);        // write if dirty
 uint32_t disk_figrec  (dpb_t*, uint16_t cluster, uint8_t sec_in_clus);
 int      disk_reset   (dos_t*);                   // flush all buffers + FATs
 ```
+
+**`disk_dirread(dos, dp, block)`** is subdirectory-aware.  `block` is a
+sequential sector index within the current directory:
+
+- If `dos->curdir_clus[dp->devnum] == 0` (root): computes
+  `sector = dp->firdir + block`, bounded by `dp->maxent`.
+- Otherwise (subdir): walks the FAT chain — `block / spc` gives the cluster
+  index, `block % spc` the sector within that cluster — then calls
+  `disk_figrec`.  Returns −1 at end-of-chain.
+
+`dirbufid` encodes `(devnum << 24) | absolute_sector` so `disk_dirwrite`
+can write to the correct on-disk sector without needing to recompute the
+address.  All higher-level directory operations (`findname_impl`, `dos_create`,
+`dos_delete`, `cmd_mkdir`, `cmd_dir`, …) call `disk_dirread` and therefore
+work transparently in the current directory without any command-level changes.
 
 `disk_bufsec` pre-read logic: skip pre-read when `secpos >= valsec`
 (sector has never been written); pre-read when `secpos < valsec`
@@ -312,9 +329,17 @@ int fcb_getname(dos_t*, fcb_t*, *bx, *si, *bh);  // movname + FINDNAME
 int fcb_devname(dos_t*);           // check name1 against PRN/LST/NUL/AUX/CON
 ```
 
-`findname_impl` scans the directory for `dos->name1`, honouring `?`
-wildcards and attribute filtering.  Tracks `dos->lastent` (current entry)
-and `dos->entfree` (first free slot found, for CREATE).
+`findname_impl` scans the **current directory** for `dos->name1`, honouring
+`?` wildcards and attribute filtering.
+
+- **Starting position**: begins at `dos->lastent` (0xFFFF = start from
+  entry 0).  This allows `dos_srchnxt` to resume after the last hit without
+  rescanning from the beginning.
+- **Termination**: for the root directory, stops after `dp->maxent` entries;
+  for a subdirectory, stops at `DIRENT_END` or when `disk_dirread` returns
+  −1 (end of cluster chain) — no fixed limit.
+- Tracks `dos->lastent` (last matched entry index) and `dos->entfree` (first
+  free slot, used by `dos_create` and `cmd_mkdir`).
 
 System call implementations (return `DOS_OK`=0 or `DOS_ERR`=0xFF):
 ```c
@@ -431,7 +456,8 @@ Returns AL result.  All 47 functions 00h–2Eh are implemented:
 ## Command Processor (`command/command.h / command.c`)
 
 `command_run(dos_t*)` — main interpreter loop:
-1. Print prompt (`A>`)
+1. Print prompt: `A>` in root, `A:\DOCS>` in a subdirectory
+   (`dos->curdir_path[curdrv]` is appended when non-empty)
 2. Read line via `dos_bufin`
 3. Call `command_exec` → dispatch
 
@@ -445,7 +471,7 @@ Returns AL result.  All 47 functions 00h–2Eh are implemented:
 
 | Command | Key behaviour |
 |---------|--------------|
-| `DIR [spec]` | Scan root directory; wildcards; shows size, date, time; free bytes |
+| `DIR [spec]` | Scan current directory; wildcards; shows `<DIR>` for subdirs; free bytes |
 | `TYPE file` | Sequential 1-byte reads; stops at Ctrl-Z (0x1A) |
 | `OPEN file` | Like TYPE but shows ALL bytes; non-printable as `^X`; high bytes as `.` |
 | `COPY src dst` | 128-byte record sequential read→write loop; sets filsiz explicitly |
@@ -453,9 +479,19 @@ Returns AL result.  All 47 functions 00h–2Eh are implemented:
 | `REN/RENAME old new` | Wildcards in both names; checks for duplicate |
 | `EDIT file` | Launches full-screen editor (see below) |
 | `CREATE name` | `dos_create` + `dos_close`; rejects wildcards |
+| `MKDIR/MD name` | Allocate cluster; write `.`/`..`; write ATTR_DIR entry in current dir |
+| `RMDIR/RD name` | Verify empty; mark entry deleted; release cluster chain |
+| `CD/CHDIR [path]` | Change `dos->curdir_clus[drv]` and `curdir_path`; `..` reads `..` entry's `firclus` |
 | `CHKDSK` | Counts free FAT12 clusters; reports total/free bytes |
 | `DATE`, `TIME` | Display then optionally set via `sscanf` |
 | `ECHO`, `REM`, `PAUSE`, `VER`, `CLS`, `HELP` | Trivial |
+
+**Subdirectory design note:** `cmd_mkdir` sets `dotdot->firclus =
+dos->curdir_clus[dos->thisdrv]` so `..` always points to the actual parent
+cluster (0 for root-level directories).  `cmd_rmdir` rejects removal of the
+current working directory (`clus == dos->curdir_clus[drv]`).  `cmd_cd` with
+`..` reads the `..` entry's `firclus` field directly from the directory's
+first sector to find the parent — no separate parent tracking is needed.
 
 ---
 
@@ -611,7 +647,10 @@ Dependencies: standard C library + POSIX (`termios`, `select`, `ioctl`,
 
 - **No external command execution** — `.COM`/`.EXE` files on the FAT12 image
   cannot be run (would require an x86 emulator).
-- **No subdirectories** — MS-DOS 1.x has a flat root-only directory.
+- **Subdirectory cluster extension not implemented** — if a subdirectory fills
+  its initial cluster (16 entries for a 512-byte sector), creating new entries
+  inside it will fail.  Root directories are not affected (they have a fixed
+  large area).
 - **FAT12 only** — FAT16/FAT32 images will not load correctly.
 - **Single sector buffer** — matching the original; only one data sector is
   cached in RAM at a time.

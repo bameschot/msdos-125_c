@@ -116,10 +116,34 @@ int disk_dirread(dos_t *dos, dpb_t *dp, uint16_t block)
     int rc = disk_chkdirwrite(dos, dp);
     if (rc != 0) return rc;
 
-    uint32_t id = ((uint32_t)dp->drvnum << 24) | block;
+    uint32_t sec;
+    uint8_t  devnum = dp->devnum;
+    uint16_t curdir = dos->curdir_clus[devnum];
+
+    if (curdir == 0) {
+        /* Root directory: fixed sectors at firdir */
+        uint16_t total = (uint16_t)((dp->maxent * DIRENT_SIZE + dp->secsiz - 1)
+                                     / dp->secsiz);
+        if (block >= total) return -1;
+        sec = (uint32_t)dp->firdir + block;
+    } else {
+        /* Subdirectory: walk FAT chain to reach the requested sector */
+        uint8_t  spc = dp->clusmsk + 1;          /* sectors per cluster */
+        uint16_t ci  = block / spc;               /* cluster index in chain */
+        uint8_t  si  = (uint8_t)(block % spc);    /* sector within cluster */
+        uint16_t clus = curdir;
+        for (uint16_t i = 0; i < ci; i++) {
+            uint16_t next = fat_unpack(dp->fat, clus);
+            if (fat12_is_eof(next) || fat12_is_free(next)) return -1;
+            clus = next;
+        }
+        sec = disk_figrec(dp, clus, si);
+    }
+
+    /* Cache key: (devnum << 24) | absolute_sector */
+    uint32_t id = ((uint32_t)devnum << 24) | (sec & 0x00FFFFFFU);
     if (dos->dirbufid == id) return 0;
 
-    uint32_t sec = dp->firdir + block;
     rc = disk_read(dos, dp, dos->dirbuf, 1, sec);
     if (rc == 0) dos->dirbufid = id;
     return rc;
@@ -127,8 +151,8 @@ int disk_dirread(dos_t *dos, dpb_t *dp, uint16_t block)
 
 int disk_dirwrite(dos_t *dos, dpb_t *dp)
 {
-    uint32_t block = dos->dirbufid & 0x00FFFFFF;
-    uint32_t sec   = dp->firdir + block;
+    /* dirbufid low 24 bits now holds the absolute sector number */
+    uint32_t sec = dos->dirbufid & 0x00FFFFFFU;
     return disk_write(dos, dp, dos->dirbuf, 1, sec);
 }
 

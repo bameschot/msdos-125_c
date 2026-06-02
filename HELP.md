@@ -14,10 +14,12 @@ the MS-DOS 1.25 C port.  It is divided into four parts:
 
 ### The command prompt
 
-After booting, the shell displays a prompt showing the current drive letter:
+After booting, the shell displays a prompt showing the current drive and directory:
 
 ```
-A>
+A>              ← root directory
+A:\DOCS>        ← inside the DOCS subdirectory
+A:\DOCS\WORK>   ← inside DOCS\WORK
 ```
 
 Type a command and press **Enter**.  Commands are not case-sensitive.
@@ -216,7 +218,7 @@ DEL *.*
 DIR [filespec]
 ```
 
-Lists the files in the root directory of the current (or specified) drive.
+Lists the files in the **current directory** of the current (or specified) drive.
 
 With no argument, lists all non-hidden files.  With a `filespec`, lists only
 matching files; wildcards are supported.
@@ -430,6 +432,113 @@ CREATE B:EMPTY.BIN
 | `Invalid file name` | Name contains illegal characters |
 | `Wildcards not allowed` | Name contains `?` or `*` |
 | `Cannot create file` | Disk full or root directory is full |
+
+---
+
+### CD / CHDIR — Change Directory
+
+```
+CD [path]
+CHDIR [path]
+```
+
+With no argument, prints the current directory path.
+
+With a path argument, changes the current directory.  The prompt immediately
+reflects the new path: `A:\DOCS>`.
+
+**Special paths:**
+
+| Path | Meaning |
+|------|---------|
+| `..` | Go up to the parent directory |
+| `\` | Return to the root directory |
+| `NAME` | Enter subdirectory `NAME` in the current directory |
+| `\NAME` | Enter `NAME` starting from the root |
+
+**Drive prefix** (optional): `CD B:\WORK` changes the directory on drive B:
+without switching the current drive.
+
+**Examples:**
+
+```
+CD                     ← print current directory
+CD DOCS                ← enter DOCS in current directory
+CD DOCS\WORK           ← not supported; use CD DOCS then CD WORK
+CD ..                  ← go up one level
+CD \                   ← return to root
+```
+
+**Error conditions:**
+
+| Message | Cause |
+|---------|-------|
+| `Directory not found` | No directory with that name exists here |
+| `Not a directory` | Name exists but is a file, not a directory |
+| `Invalid directory name` | Name contains illegal characters or wildcards |
+
+---
+
+### MKDIR / MD — Create Directory
+
+```
+MKDIR dirname
+MD dirname
+```
+
+Creates a new subdirectory in the **current directory**.  The new directory
+is initialised with `.` (self) and `..` (parent) entries.
+
+Wildcards are not permitted.  The name must follow the 8.3 convention.
+
+**Examples:**
+
+```
+MKDIR DOCS
+MD WORK
+MKDIR B:BACKUP
+```
+
+**Error conditions:**
+
+| Message | Cause |
+|---------|-------|
+| `Required parameter missing` | No name supplied |
+| `Invalid directory name` | Name contains illegal characters |
+| `Wildcards not allowed` | Name contains `?` or `*` |
+| `Directory or file already exists` | A file or directory with that name already exists |
+| `Root directory is full` | The root directory has no more free entries |
+| `Insufficient disk space` | No free clusters available |
+
+---
+
+### RMDIR / RD — Remove Directory
+
+```
+RMDIR dirname
+RD dirname
+```
+
+Removes an empty subdirectory from the **current directory**.  The directory
+must contain no files or subdirectories other than the `.` and `..` entries;
+if it is not empty, the command reports an error and does nothing.
+
+**Examples:**
+
+```
+RMDIR DOCS
+RD WORK
+```
+
+**Error conditions:**
+
+| Message | Cause |
+|---------|-------|
+| `Required parameter missing` | No name supplied |
+| `Directory not found` | No directory with that name exists here |
+| `Not a directory` | Name refers to a file, not a directory |
+| `Cannot remove current directory` | Trying to remove the directory you are currently in |
+| `Directory not empty` | Directory still contains files or subdirectories |
 
 ---
 

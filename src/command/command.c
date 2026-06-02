@@ -98,12 +98,18 @@ static void cmd_dir(dos_t *dos, const char *args)
     }
     dpb_t   *dp           = dos->thisbp;
     uint16_t ents_per_sec = dp->secsiz / DIRENT_SIZE;
-    uint16_t total_entries = dp->maxent;
+    /* Root has a fixed entry count; subdirs terminate at DIRENT_END */
+    uint16_t total_entries = (dos->curdir_clus[drv] == 0) ? dp->maxent : 0xFFFFU;
 
     /* Header */
     print_str(dos, "\r\n Directory of  ");
     print_char(dos, (char)('A' + drv));
-    print_str(dos, ":\\\r\n\r\n");
+    print_char(dos, ':');
+    if (dos->curdir_path[drv][0])
+        print_str(dos, dos->curdir_path[drv]);
+    else
+        print_char(dos, '\\');
+    print_str(dos, "\r\n\r\n");
 
     uint32_t total_bytes = 0;
     uint16_t file_count  = 0;
@@ -650,6 +656,122 @@ static void cmd_create(dos_t *dos, const char *args)
 }
 
 /* -----------------------------------------------------------------------
+ * CD / CHDIR — change current directory
+ * ----------------------------------------------------------------------- */
+
+static void cmd_cd(dos_t *dos, const char *args)
+{
+    args = skip_space(args);
+    char word[64];
+    copy_word(args, word, sizeof(word));
+
+    uint8_t drv = dos->curdrv;
+
+    /* CD with no argument: print current directory */
+    if (!word[0]) {
+        print_char(dos, (char)('A' + drv));
+        print_char(dos, ':');
+        if (dos->curdir_path[drv][0])
+            print_str(dos, dos->curdir_path[drv]);
+        else
+            print_char(dos, '\\');
+        print_crlf(dos);
+        return;
+    }
+
+    /* Optional drive prefix: "B:\DOCS" */
+    if (word[1] == ':') {
+        drv = (uint8_t)(toupper((unsigned char)word[0]) - 'A');
+        if (drv >= dos->num_drives) {
+            print_str(dos, "Invalid drive\r\n"); return;
+        }
+        memmove(word, word + 2, strlen(word + 2) + 1);
+    }
+
+    /* Absolute path: strip leading backslash, reset to root first */
+    if (word[0] == '\\' || word[0] == '/') {
+        dos->curdir_clus[drv] = 0;
+        dos->curdir_path[drv][0] = '\0';
+        memmove(word, word + 1, strlen(word + 1) + 1);
+        if (!word[0]) return;   /* CD \ — done */
+    }
+
+    /* Go up one level */
+    if (strcmp(word, "..") == 0) {
+        if (dos->curdir_clus[drv] == 0) return;   /* already at root */
+
+        dos->thisdrv = drv;
+        if (disk_fatread(dos) != 0) { print_str(dos, "Disk error\r\n"); return; }
+        dpb_t *dp = dos->thisbp;
+
+        /* Read the '..' entry (second entry in current dir's first sector) */
+        uint8_t sec_buf[MAX_SEC_SIZE];
+        uint32_t sec = disk_figrec(dp, dos->curdir_clus[drv], 0);
+        if (disk_read(dos, dp, sec_buf, 1, sec) != 0) {
+            print_str(dos, "Disk error\r\n"); return;
+        }
+        dirent_t *dotdot = (dirent_t *)(sec_buf + DIRENT_SIZE);
+        dos->curdir_clus[drv] = dotdot->firclus;
+
+        /* Remove last component from path string */
+        char *last = strrchr(dos->curdir_path[drv], '\\');
+        if (last) *last = '\0';
+        else dos->curdir_path[drv][0] = '\0';
+        return;
+    }
+
+    /* Go into a named subdirectory */
+    fcb_t fcb;
+    memset(&fcb, 0, sizeof(fcb));
+    const char *p = word;
+    if (dos_makefcb(dos, &p, &fcb, 0) == DOS_ERR) {
+        print_str(dos, "Invalid directory name\r\n"); return;
+    }
+    for (int i = 1; i < 12; i++) {
+        if (((uint8_t*)&fcb)[i] == '?') {
+            print_str(dos, "Wildcards not allowed\r\n"); return;
+        }
+    }
+
+    /* fcb_movname sets dos->thisdrv from the FCB drive field;
+     * override with the drive we resolved above */
+    if (fcb_movname(dos, &fcb) != 0) {
+        print_str(dos, "Invalid directory name\r\n"); return;
+    }
+    dos->thisdrv = drv;
+
+    if (disk_fatread(dos) != 0) { print_str(dos, "Disk error\r\n"); return; }
+
+    /* Search in the current directory of 'drv' */
+    uint8_t dma_buf[DIRENT_SIZE + 4];
+    uint8_t *old_dma = dos->dmaadd;
+    dos_setdma(dos, dma_buf);
+    uint8_t found = dos_srchfrst(dos, &fcb);
+    dos_setdma(dos, old_dma);
+
+    if (found != DOS_OK) {
+        print_str(dos, "Directory not found\r\n"); return;
+    }
+
+    dirent_t *info = (dirent_t *)(dma_buf + 1);
+    if (!(info->attrib & ATTR_DIR)) {
+        print_str(dos, "Not a directory\r\n"); return;
+    }
+
+    /* Update the current directory cluster and display path */
+    dos->curdir_clus[drv] = info->firclus;
+    char name_str[13];
+    dos_name_to_str(info->name, name_str);
+    char  *path = dos->curdir_path[drv];
+    size_t plen = strlen(path);
+    size_t nlen = strlen(name_str);
+    if (plen + 1 + nlen < sizeof(dos->curdir_path[0])) {
+        path[plen] = '\\';
+        memcpy(path + plen + 1, name_str, nlen + 1);
+    }
+}
+
+/* -----------------------------------------------------------------------
  * MKDIR / MD — create a directory
  * ----------------------------------------------------------------------- */
 
@@ -720,7 +842,7 @@ static void cmd_mkdir(dos_t *dos, const char *args)
     memset(dotdot->name, ' ', 8); dotdot->name[0] = '.'; dotdot->name[1] = '.';
     memset(dotdot->ext,  ' ', 3);
     dotdot->attrib  = ATTR_DIR;
-    dotdot->firclus = 0;   /* parent = root (cluster 0 in FAT convention) */
+    dotdot->firclus = dos->curdir_clus[dos->thisdrv]; /* parent dir cluster (0 = root) */
     dotdot->filsiz  = 0;
     dos_date_pack(dos, &dotdot->fdate, &dotdot->ftime);
     memset(dotdot->_res, 0, sizeof(dotdot->_res));
@@ -801,6 +923,11 @@ static void cmd_rmdir(dos_t *dos, const char *args)
     }
 
     uint16_t clus = info->firclus;
+
+    /* Refuse to remove the current working directory */
+    if (clus == dos->curdir_clus[dos->thisdrv] && clus != 0) {
+        print_str(dos, "Cannot remove current directory\r\n"); return;
+    }
 
     /* Check the directory is empty — only '.' and '..' are allowed */
     if (clus != 0 && clus < dp->maxclus) {
@@ -889,6 +1016,18 @@ static const struct {
       "Create an empty file with the given name." },
     { "OPEN",   "OPEN filename",
       "Open a file and display its contents as ASCII." },
+    { "CD",     "CD [path]",
+      "Display or change the current directory." },
+    { "CHDIR",  "CHDIR [path]",
+      "Alias for CD." },
+    { "MKDIR",  "MKDIR dirname",
+      "Create a new directory." },
+    { "MD",     "MD dirname",
+      "Alias for MKDIR." },
+    { "RMDIR",  "RMDIR dirname",
+      "Remove an empty directory." },
+    { "RD",     "RD dirname",
+      "Alias for RMDIR." },
     { NULL, NULL, NULL }
 };
 
@@ -963,6 +1102,12 @@ static const cmd_entry_t cmd_table[] = {
     { "EDIT",   cmd_edit   },
     { "CREATE", cmd_create },
     { "OPEN",   cmd_open   },
+    { "CD",     cmd_cd     },
+    { "CHDIR",  cmd_cd     },
+    { "MKDIR",  cmd_mkdir  },
+    { "MD",     cmd_mkdir  },
+    { "RMDIR",  cmd_rmdir  },
+    { "RD",     cmd_rmdir  },
     { "HELP",   cmd_help   },
     { NULL,     NULL       }
 };
@@ -1049,8 +1194,12 @@ void command_run(dos_t *dos)
     uint8_t linebuf[3 + 256];
 
     for (;;) {
-        /* Print prompt: "A>" */
+        /* Print prompt: "A>" in root, "A:\DIR>" in a subdirectory */
         print_char(dos, (char)('A' + dos->curdrv));
+        if (dos->curdir_path[dos->curdrv][0]) {
+            print_char(dos, ':');
+            print_str(dos, dos->curdir_path[dos->curdrv]);
+        }
         print_char(dos, '>');
 
         /* Read line */

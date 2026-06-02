@@ -111,31 +111,35 @@ static int findname_impl(dos_t *dos, dpb_t *dp,
                          int16_t *out_bh)
 {
     uint16_t ents_per_sec = dp->secsiz / DIRENT_SIZE;
-    uint16_t entry_num    = 0;
-    dos->entfree          = 0xFFFF;
 
-    for (;;) {
+    /* Start from dos->lastent so SRCHNXT can resume after the last hit.
+     * 0xFFFF is the sentinel meaning "start from the beginning". */
+    uint16_t entry_num = (dos->lastent == 0xFFFF) ? 0 : dos->lastent;
+
+    /* Root directory has a fixed entry count; subdirectories do not —
+     * we stop only when DIRENT_END or disk_dirread signals end-of-chain. */
+    bool     is_root  = (dos->curdir_clus[dos->thisdrv] == 0);
+    uint16_t max_ent  = is_root ? dp->maxent : 0xFFFFU;
+
+    dos->entfree = 0xFFFF;
+
+    for (; entry_num < max_ent; entry_num++) {
         uint16_t block = entry_num / ents_per_sec;
         uint16_t off   = (entry_num % ents_per_sec) * DIRENT_SIZE;
 
-        if (entry_num >= dp->maxent) break;
-
-        if (disk_dirread(dos, dp, block) != 0) return -1;
+        /* disk_dirread returns -1 at end-of-chain for subdirs */
+        if (disk_dirread(dos, dp, block) != 0) break;
         dirent_t *de = (dirent_t *)(dos->dirbuf + off);
 
         uint8_t first = de->name[0];
 
         if (first == DIRENT_END) {
-            /* End of directory */
-            if (dos->entfree == 0xFFFF) {
-                dos->entfree = entry_num;
-            }
+            if (dos->entfree == 0xFFFF) dos->entfree = entry_num;
             break;
         }
 
         if (first == DIRENT_FREE) {
-            if (dos->entfree == 0xFFFF)
-                dos->entfree = entry_num;
+            if (dos->entfree == 0xFFFF) dos->entfree = entry_num;
         } else {
             /* Compare name with wildcards */
             bool match = true;
@@ -147,8 +151,8 @@ static int findname_impl(dos_t *dos, dpb_t *dp,
                 }
             }
             if (match) {
-                /* Check attributes */
-                uint8_t att = dos->attrib;
+                /* Attribute filter */
+                uint8_t att    = dos->attrib;
                 uint8_t de_att = de->attrib;
                 if (!dos->creating) {
                     if ((~att & de_att & (ATTR_HIDDEN | ATTR_SYSTEM)) != 0)
@@ -158,13 +162,11 @@ static int findname_impl(dos_t *dos, dpb_t *dp,
             if (match) {
                 dos->lastent = entry_num;
                 *out_bx = off;
-                /* out_si points to firclus field */
                 *out_si = (uint16_t)((uint8_t*)&de->firclus - dos->dirbuf);
                 *out_bh = (int16_t)dos->thisdrv;
                 return 0;
             }
         }
-        entry_num++;
     }
     return -1;   /* not found */
 }
