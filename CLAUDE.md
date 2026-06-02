@@ -452,7 +452,7 @@ Returns AL result.  All 47 functions 00h–2Eh are implemented:
 | `DEL/ERASE spec` | Wildcards; prompts Y/N for `*.*`; `dos->delall` set to 0x00 for DEL *.* |
 | `REN/RENAME old new` | Wildcards in both names; checks for duplicate |
 | `EDIT file` | Launches full-screen editor (see below) |
-| `MKFILE name` | `dos_create` + `dos_close`; rejects wildcards |
+| `CREATE name` | `dos_create` + `dos_close`; rejects wildcards |
 | `CHKDSK` | Counts free FAT12 clusters; reports total/free bytes |
 | `DATE`, `TIME` | Display then optionally set via `sscanf` |
 | `ECHO`, `REM`, `PAUSE`, `VER`, `CLS`, `HELP` | Trivial |

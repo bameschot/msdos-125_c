@@ -401,10 +401,10 @@ key before continuing.
 
 ---
 
-### MKFILE — Create an Empty File
+### CREATE — Create an Empty File
 
 ```
-MKFILE filename
+CREATE filename
 ```
 
 Creates a new, empty (zero-byte) file with the given name in the current
@@ -417,9 +417,9 @@ convention.
 **Examples:**
 
 ```
-MKFILE NOTES.TXT
-MKFILE DATA.DAT
-MKFILE B:EMPTY.BIN
+CREATE NOTES.TXT
+CREATE DATA.DAT
+CREATE B:EMPTY.BIN
 ```
 
 **Error conditions:**
@@ -429,7 +429,7 @@ MKFILE B:EMPTY.BIN
 | `Required parameter missing` | No filename supplied |
 | `Invalid file name` | Name contains illegal characters |
 | `Wildcards not allowed` | Name contains `?` or `*` |
-| `Cannot create file` | Disk full or root directory full |
+| `Cannot create file` | Disk full or root directory is full |
 
 ---
 

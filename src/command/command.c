@@ -606,10 +606,10 @@ static void cmd_edit(dos_t *dos, const char *args)
 }
 
 /* -----------------------------------------------------------------------
- * MKFILE — create an empty file
+ * CREATE — create an empty file
  * ----------------------------------------------------------------------- */
 
-static void cmd_mkfile(dos_t *dos, const char *args)
+static void cmd_create(dos_t *dos, const char *args)
 {
     char word[13];
     args = skip_space(args);
@@ -647,6 +647,199 @@ static void cmd_mkfile(dos_t *dos, const char *args)
     print_str(dos, "Created: ");
     print_str(dos, word);
     print_crlf(dos);
+}
+
+/* -----------------------------------------------------------------------
+ * MKDIR / MD — create a directory
+ * ----------------------------------------------------------------------- */
+
+static void cmd_mkdir(dos_t *dos, const char *args)
+{
+    char word[13];
+    args = skip_space(args);
+    copy_word(args, word, sizeof(word));
+    if (!word[0]) { print_str(dos, "Required parameter missing\r\n"); return; }
+
+    /* Parse into an FCB and validate */
+    fcb_t fcb;
+    memset(&fcb, 0, sizeof(fcb));
+    const char *p = word;
+    if (dos_makefcb(dos, &p, &fcb, 0) == DOS_ERR) {
+        print_str(dos, "Invalid directory name\r\n"); return;
+    }
+    for (int i = 1; i < 12; i++) {
+        if (((uint8_t*)&fcb)[i] == '?') {
+            print_str(dos, "Wildcards not allowed\r\n"); return;
+        }
+    }
+
+    /* Set up dos->name1, thisdrv; reject device names */
+    if (fcb_movname(dos, &fcb) != 0) {
+        print_str(dos, "Invalid directory name\r\n"); return;
+    }
+    if (fcb_devname(dos) >= 0) {
+        print_str(dos, "Invalid directory name\r\n"); return;
+    }
+
+    /* Load FAT */
+    if (disk_fatread(dos) != 0) { print_str(dos, "Disk error\r\n"); return; }
+    dpb_t *dp = dos->thisbp;
+
+    /* Check name doesn't already exist; also fills dos->entfree */
+    uint8_t dma_buf[DIRENT_SIZE + 4];
+    uint8_t *old_dma = dos->dmaadd;
+    dos_setdma(dos, dma_buf);
+    uint8_t found = dos_srchfrst(dos, &fcb);
+    dos_setdma(dos, old_dma);
+
+    if (found == DOS_OK) {
+        print_str(dos, "Directory or file already exists\r\n"); return;
+    }
+    if (dos->entfree == 0xFFFF) {
+        print_str(dos, "Root directory is full\r\n"); return;
+    }
+
+    /* Allocate one cluster for the directory's own data */
+    uint16_t clus = fat_allocate(dos, dp, NULL, 0, 0, 1);
+    if (!clus) { print_str(dos, "Insufficient disk space\r\n"); return; }
+
+    /* Initialise the cluster: write '.' and '..' entries, zero the rest */
+    uint8_t sec_buf[MAX_SEC_SIZE];
+    memset(sec_buf, 0, dp->secsiz);
+
+    dirent_t *dot = (dirent_t *)sec_buf;
+    memset(dot->name, ' ', 8); dot->name[0] = '.';
+    memset(dot->ext,  ' ', 3);
+    dot->attrib  = ATTR_DIR;
+    dot->firclus = clus;
+    dot->filsiz  = 0;
+    dos_date_pack(dos, &dot->fdate, &dot->ftime);
+    memset(dot->_res, 0, sizeof(dot->_res));
+
+    dirent_t *dotdot = (dirent_t *)(sec_buf + DIRENT_SIZE);
+    memset(dotdot->name, ' ', 8); dotdot->name[0] = '.'; dotdot->name[1] = '.';
+    memset(dotdot->ext,  ' ', 3);
+    dotdot->attrib  = ATTR_DIR;
+    dotdot->firclus = 0;   /* parent = root (cluster 0 in FAT convention) */
+    dotdot->filsiz  = 0;
+    dos_date_pack(dos, &dotdot->fdate, &dotdot->ftime);
+    memset(dotdot->_res, 0, sizeof(dotdot->_res));
+
+    uint32_t clus_sec = disk_figrec(dp, clus, 0);
+    if (disk_write(dos, dp, sec_buf, 1, clus_sec) != 0) {
+        fat_release(dos, dp, clus);
+        fat_write(dos, dp);
+        print_str(dos, "Disk write error\r\n"); return;
+    }
+
+    /* Write the directory entry into the root directory */
+    uint16_t ents_per_sec = dp->secsiz / DIRENT_SIZE;
+    uint16_t block = (uint16_t)(dos->entfree / ents_per_sec);
+    uint16_t off   = (uint16_t)((dos->entfree % ents_per_sec) * DIRENT_SIZE);
+
+    if (disk_dirread(dos, dp, block) != 0) {
+        fat_release(dos, dp, clus);
+        fat_write(dos, dp);
+        print_str(dos, "Disk read error\r\n"); return;
+    }
+
+    dirent_t *de = (dirent_t *)(dos->dirbuf + off);
+    memcpy(de->name, dos->name1,     8);
+    memcpy(de->ext,  dos->name1 + 8, 3);
+    de->attrib  = ATTR_DIR;
+    de->firclus = clus;
+    de->filsiz  = 0;
+    dos_date_pack(dos, &de->fdate, &de->ftime);
+    memset(de->_res, 0, sizeof(de->_res));
+
+    dos->dirtydir = 1;
+    disk_dirwrite(dos, dp);
+    fat_write(dos, dp);
+
+    print_str(dos, "Created: "); print_str(dos, word); print_crlf(dos);
+}
+
+/* -----------------------------------------------------------------------
+ * RMDIR / RD — remove an empty directory
+ * ----------------------------------------------------------------------- */
+
+static void cmd_rmdir(dos_t *dos, const char *args)
+{
+    char word[13];
+    args = skip_space(args);
+    copy_word(args, word, sizeof(word));
+    if (!word[0]) { print_str(dos, "Required parameter missing\r\n"); return; }
+
+    fcb_t fcb;
+    memset(&fcb, 0, sizeof(fcb));
+    const char *p = word;
+    dos_makefcb(dos, &p, &fcb, 0);
+
+    if (fcb_movname(dos, &fcb) != 0) {
+        print_str(dos, "Invalid directory name\r\n"); return;
+    }
+
+    if (disk_fatread(dos) != 0) { print_str(dos, "Disk error\r\n"); return; }
+    dpb_t *dp = dos->thisbp;
+
+    /* Find the directory entry */
+    uint8_t dma_buf[DIRENT_SIZE + 4];
+    uint8_t *old_dma = dos->dmaadd;
+    dos_setdma(dos, dma_buf);
+    uint8_t found = dos_srchfrst(dos, &fcb);
+    dos_setdma(dos, old_dma);
+
+    if (found != DOS_OK) {
+        print_str(dos, "Directory not found\r\n"); return;
+    }
+
+    /* dma_buf[0] = drive number; dma_buf[1..32] = directory entry copy */
+    dirent_t *info = (dirent_t *)(dma_buf + 1);
+
+    if (!(info->attrib & ATTR_DIR)) {
+        print_str(dos, "Not a directory\r\n"); return;
+    }
+
+    uint16_t clus = info->firclus;
+
+    /* Check the directory is empty — only '.' and '..' are allowed */
+    if (clus != 0 && clus < dp->maxclus) {
+        uint8_t sec_buf[MAX_SEC_SIZE];
+        uint32_t sec = disk_figrec(dp, clus, 0);
+        if (disk_read(dos, dp, sec_buf, 1, sec) != 0) {
+            print_str(dos, "Disk read error\r\n"); return;
+        }
+        for (uint16_t i = 0; i < dp->secsiz / DIRENT_SIZE; i++) {
+            dirent_t *e = (dirent_t *)(sec_buf + (uint32_t)i * DIRENT_SIZE);
+            if (e->name[0] == DIRENT_END) break;
+            if (e->name[0] == DIRENT_FREE) continue;
+            if (e->name[0] == '.') continue;   /* skip '.' and '..' */
+            print_str(dos, "Directory not empty\r\n"); return;
+        }
+    }
+
+    /* Retrieve the entry number saved by dos_srchfrst in fcb.fildirent (+16) */
+    uint16_t entry_num  = *(uint16_t*)((uint8_t*)&fcb + 16);
+    uint16_t ents_per_sec = dp->secsiz / DIRENT_SIZE;
+    uint16_t block = (uint16_t)(entry_num / ents_per_sec);
+    uint16_t off   = (uint16_t)((entry_num % ents_per_sec) * DIRENT_SIZE);
+
+    /* Mark the root directory entry as deleted */
+    if (disk_dirread(dos, dp, block) != 0) {
+        print_str(dos, "Disk read error\r\n"); return;
+    }
+    dirent_t *de = (dirent_t *)(dos->dirbuf + off);
+    de->name[0] = DIRENT_FREE;
+    dos->dirtydir = 1;
+    disk_dirwrite(dos, dp);
+
+    /* Release the directory's cluster chain */
+    if (clus != 0 && clus < dp->maxclus) {
+        fat_release(dos, dp, clus);
+    }
+    fat_write(dos, dp);
+
+    print_str(dos, "Removed: "); print_str(dos, word); print_crlf(dos);
 }
 
 /* -----------------------------------------------------------------------
@@ -692,7 +885,7 @@ static const struct {
       "Display the MS-DOS version." },
     { "EDIT",   "EDIT filename",
       "Open a text file for viewing and editing." },
-    { "MKFILE", "MKFILE filename",
+    { "CREATE", "CREATE filename",
       "Create an empty file with the given name." },
     { "OPEN",   "OPEN filename",
       "Open a file and display its contents as ASCII." },
@@ -768,7 +961,7 @@ static const cmd_entry_t cmd_table[] = {
     { "REM",    NULL       },   /* comment — ignore */
     { "CHKDSK", cmd_chkdsk },
     { "EDIT",   cmd_edit   },
-    { "MKFILE", cmd_mkfile },
+    { "CREATE", cmd_create },
     { "OPEN",   cmd_open   },
     { "HELP",   cmd_help   },
     { NULL,     NULL       }

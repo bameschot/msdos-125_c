@@ -84,7 +84,7 @@ A>
 | `DEL spec` / `ERASE spec` | Delete files; wildcards supported |
 | `REN old new` / `RENAME old new` | Rename a file; wildcards supported |
 | `EDIT file` | Full-screen text editor — view, edit and save a file |
-| `MKFILE name` | Create an empty (zero-byte) file |
+| `CREATE name` | Create an empty (zero-byte) file |
 | `CHKDSK` | Show total and free disk space |
 | `DATE [mm-dd-yy]` | Display or set the date |
 | `TIME [hh:mm[:ss]]` | Display or set the time |

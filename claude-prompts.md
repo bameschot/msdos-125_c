@@ -9,4 +9,6 @@
 8. add an EDIT command that allows the user to view and edit and save a text file on disk. change the wrapper to allow for this if required
 9. change the moving the arrows closes the editor, ^Q command does not work on keyboard
 10. what control keys are the commands in the editor supposed to listen to? for example ^Q 
+11. rename the MKFILE to CREATE command (also update readme.md and HELP reference)
+12. 
 
