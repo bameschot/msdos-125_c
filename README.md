@@ -83,6 +83,7 @@ A>
 | `COPY src dst` | Copy a file |
 | `DEL spec` / `ERASE spec` | Delete files; wildcards supported |
 | `REN old new` / `RENAME old new` | Rename a file; wildcards supported |
+| `EDIT file` | Full-screen text editor — view, edit and save a file |
 | `MKFILE name` | Create an empty (zero-byte) file |
 | `CHKDSK` | Show total and free disk space |
 | `DATE [mm-dd-yy]` | Display or set the date |
@@ -125,6 +126,45 @@ This is line two.
 
 ---
 
+## EDIT Command
+
+`EDIT` is a full-screen terminal text editor backed by the FAT12 disk layer.  It opens any text file for viewing and editing, and writes the result back to the disk image on save.  A new file is created if the name does not yet exist.
+
+```
+A>EDIT NOTES.TXT
+```
+
+```
+ EDIT: NOTES.TXT      Ln 1     Col 1     [No changes]
+ ──────────────────────────────────────────────────────
+ file content here…
+
+
+
+ ──────────────────────────────────────────────────────
+ ^W Save  ^X Quit  ^G Goto  Arrows Move  Home/End  PgUp/PgDn  Del/BS Delete  Esc Quit
+```
+
+**Key bindings:**
+
+| Key | Action |
+|-----|--------|
+| Arrow keys | Move cursor |
+| Home / End | Start / end of current line |
+| Ctrl+Home / Ctrl+End | Start / end of file |
+| Page Up / Page Down | Scroll one screen |
+| Backspace | Delete character before cursor; join lines at column 0 |
+| Delete | Delete character at cursor; join with next line at end of line |
+| Enter | Insert line break |
+| Tab | Insert 4 spaces |
+| **Ctrl+W** | **Save file** (Write) |
+| **Ctrl+X** / Esc | **Quit** — prompts if there are unsaved changes |
+| Ctrl+G | Go to a specific line number |
+
+> **Note on control keys:** `Ctrl+S` (XOFF) and `Ctrl+Q` (XON) are the POSIX flow-control characters and may be intercepted by the terminal before they reach the application.  The editor uses `Ctrl+W` and `Ctrl+X` instead, which have no terminal meaning and are always delivered in raw mode.
+
+---
+
 ## Architecture
 
 ```
@@ -142,6 +182,7 @@ src/
     kernel.h/c   -- dos_init(), dos_call() — INT 21H dispatcher (fn 00h–2Eh)
   command/
     command.h/c  -- Command interpreter loop and all internal commands
+    edit.h/c     -- Full-screen text editor (EDIT command)
   host/
     bios_host.h/c -- POSIX implementation: termios console, disk image I/O
     main.c        -- Entry point; --format mode; boots DOS
