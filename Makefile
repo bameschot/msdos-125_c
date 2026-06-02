@@ -14,6 +14,7 @@ SRCS = \
   src/kernel/kernel.c   \
   src/command/command.c \
   src/command/edit.c   \
+  src/command/basic.c  \
   src/host/bios_host.c  \
   src/host/main.c
 
@@ -24,7 +25,7 @@ OBJS = $(SRCS:.c=.o)
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<

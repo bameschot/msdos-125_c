@@ -84,6 +84,7 @@ A>
 | `DEL spec` / `ERASE spec` | Delete files; wildcards supported |
 | `REN old new` / `RENAME old new` | Rename a file; wildcards supported |
 | `EDIT file` | Full-screen text editor — view, edit and save a file |
+| `BASIC file` | Run a BASIC program file |
 | `CREATE name` | Create an empty (zero-byte) file |
 | `MKDIR dir` / `MD dir` | Create a subdirectory |
 | `RMDIR dir` / `RD dir` | Remove an empty subdirectory |
@@ -165,6 +166,188 @@ A>EDIT NOTES.TXT
 | Ctrl+G | Go to a specific line number |
 
 > **Note on control keys:** `Ctrl+S` (XOFF) and `Ctrl+Q` (XON) are the POSIX flow-control characters and may be intercepted by the terminal before they reach the application.  The editor uses `Ctrl+W` and `Ctrl+X` instead, which have no terminal meaning and are always delivered in raw mode.
+
+---
+
+## BASIC Command
+
+`BASIC` runs a line-numbered BASIC source file (`.BAS`) stored on the FAT12 disk image.  It is a pure C interpreter — no x86 code is generated or executed.
+
+---
+
+### Writing and running your first program
+
+#### Step 1 — create and edit the file
+
+```
+A>EDIT HELLO.BAS
+```
+
+The full-screen editor opens.  Type your program, then press **Ctrl+W** to save and **Ctrl+X** to quit.
+
+#### Step 2 — run it
+
+```
+A>BASIC HELLO.BAS
+```
+
+#### Step 3 — edit and re-run
+
+```
+A>EDIT HELLO.BAS       ← make changes
+A>BASIC HELLO.BAS      ← run again
+```
+
+You can also keep your programs organised in subdirectories:
+
+```
+A>MKDIR PROGRAMS
+A>CD PROGRAMS
+A:\PROGRAMS>EDIT HELLO.BAS
+A:\PROGRAMS>BASIC HELLO.BAS
+```
+
+---
+
+### Syntax reference
+
+Every line begins with a **line number** (1–65535).  The interpreter executes lines in ascending numeric order.  Lines are separated by newlines; multiple statements on one line are separated by `:`.
+
+```
+10 REM this is a comment
+20 PRINT "Hello"; " "; "World"   : REM inline second statement
+```
+
+#### Variables
+
+| Kind | Names | Capacity |
+|------|-------|---------|
+| Numeric | `A` – `Z` | 64-bit float (`double`) |
+| String | `A$` – `Z$` | Up to 255 characters |
+
+Variables are global and zero / empty-string initialised.  There are no arrays.
+
+#### Statements
+
+| Statement | Example | Notes |
+|-----------|---------|-------|
+| `REM` | `10 REM comment` | Comment; `'` is also accepted |
+| `PRINT` | `10 PRINT "x = "; X` | `;` joins with no gap, `,` advances to next 14-column tab stop; trailing `;` suppresses the newline |
+| `LET` | `10 LET A = A + 1` | `LET` is optional — `10 A = A + 1` works too |
+| `INPUT` | `10 INPUT "Name: "; N$` | Prints optional prompt, reads a line; backspace works |
+| `IF…THEN` | `10 IF X > 0 THEN 50` | Jumps to line 50 when true |
+| `IF…THEN` | `10 IF X > 0 THEN PRINT "pos"` | Executes inline statement when true |
+| `GOTO` | `10 GOTO 100` | Unconditional jump |
+| `GOSUB` | `10 GOSUB 500` | Call subroutine at line 500 (stack depth 32) |
+| `RETURN` | `500 RETURN` | Return from subroutine |
+| `FOR…NEXT` | `10 FOR I = 1 TO 10 STEP 2` | Loop; `STEP` defaults to 1; nest up to 16 deep |
+| `NEXT` | `20 NEXT I` | End of loop body |
+| `END` / `STOP` | `99 END` | Halt program |
+
+#### Operators
+
+| Category | Symbols | Notes |
+|----------|---------|-------|
+| Arithmetic | `+  -  *  /  ^` | `^` = power; standard precedence |
+| String | `+` | Concatenation when both sides are strings |
+| Comparison | `=  <>  <  >  <=  >=` | Return `-1` (true) or `0` (false) |
+| Logical | `AND  OR  NOT` | Operate on numeric truth values |
+
+Parentheses can be used freely: `(A + B) * C`.
+
+#### Built-in functions
+
+| Function | Returns | Example |
+|----------|---------|---------|
+| `INT(x)` | Floor toward −∞ | `INT(3.9)` → `3`, `INT(-1.1)` → `-2` |
+| `ABS(x)` | Absolute value | `ABS(-5)` → `5` |
+| `SQR(x)` | Square root | `SQR(9)` → `3` |
+| `RND(x)` | Random float 0 ≤ r < 1 | `INT(RND(1)*6)+1` — dice roll |
+| `LEN(s$)` | String length | `LEN("hi")` → `2` |
+| `ASC(s$)` | ASCII code of first char | `ASC("A")` → `65` |
+| `VAL(s$)` | Parse string as number | `VAL("42")` → `42` |
+| `CHR$(n)` | Character from ASCII code | `CHR$(65)` → `"A"` |
+| `STR$(n)` | Number to string | `STR$(3.14)` → `"3.14"` |
+| `LEFT$(s$, n)` | First n characters | `LEFT$("Hello", 3)` → `"Hel"` |
+| `RIGHT$(s$, n)` | Last n characters | `RIGHT$("Hello", 3)` → `"llo"` |
+| `MID$(s$, start[, len])` | Substring (1-based) | `MID$("Hello", 2, 3)` → `"ell"` |
+
+---
+
+### Example programs
+
+#### Hello World
+
+```basic
+10 PRINT "Hello, World!"
+20 END
+```
+
+#### Fibonacci sequence
+
+```basic
+10 LET A = 0
+20 LET B = 1
+30 FOR I = 1 TO 10
+40   PRINT A
+50   LET C = A + B
+60   LET A = B
+70   LET B = C
+80 NEXT I
+90 END
+```
+
+#### Number guessing game
+
+```basic
+10 LET S = INT(RND(1) * 100) + 1
+20 PRINT "Guess a number between 1 and 100"
+30 INPUT "Your guess: "; G
+40 IF G = S THEN 90
+50 IF G < S THEN PRINT "Too low"
+60 IF G > S THEN PRINT "Too high"
+70 GOTO 30
+90 PRINT "Correct!"
+100 END
+```
+
+#### Subroutine example
+
+```basic
+10 FOR I = 1 TO 3
+20   GOSUB 100
+30 NEXT I
+40 END
+100 PRINT "Hello from subroutine #"; I
+110 RETURN
+```
+
+#### String operations
+
+```basic
+10 INPUT "Enter your name: "; N$
+20 PRINT "Hello, "; N$; "!"
+30 PRINT "Your name has "; LEN(N$); " characters"
+40 PRINT "First letter: "; LEFT$(N$, 1)
+50 END
+```
+
+---
+
+### Errors
+
+Errors are reported as `?MESSAGE IN line N` and execution halts immediately:
+
+```
+?UNDEFINED LINE 999 IN 50
+?DIVISION BY ZERO IN 30
+?TYPE MISMATCH IN 20
+?SYNTAX ERROR IN 10
+?GOSUB OVERFLOW IN 40
+?NEXT WITHOUT FOR IN 70
+```
+
+**Not supported:** arrays, `DATA`/`READ`/`RESTORE`, `WHILE`/`WEND`, `DEF FN`, `ON GOTO`/`GOSUB`.
 
 ---
 

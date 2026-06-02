@@ -27,6 +27,7 @@ src/
   command/         Command processor (COMMAND.COM equivalent)
     command.h / command.c  Shell loop + all internal commands
     edit.h / edit.c  Full-screen text editor (EDIT command)
+    basic.h / basic.c  Line-numbered BASIC interpreter (BASIC command)
 
   host/            POSIX host wrapper — replaces IO.ASM
     bios_host.h / bios_host.c  termios console, disk image I/O, clock
@@ -37,7 +38,8 @@ src/
 
 | File | Lines |
 |------|-------|
-| `command/command.c` | 1 200 |
+| `command/basic.c` | 1 046 |
+| `command/command.c` | 1 215 |
 | `host/bios_host.c` | 605 |
 | `command/edit.c` | 610 |
 | `kernel/fcb.c` | 590 |
@@ -47,8 +49,8 @@ src/
 | `kernel/fat.c` | 228 |
 | `kernel/disk.c` | 215 |
 | `kernel/datetime.c` | 172 |
-| Headers (all) | ~570 |
-| **Total** | **~5 250** |
+| Headers (all) | ~575 |
+| **Total** | **~6 300** |
 
 ---
 
@@ -478,6 +480,7 @@ Returns AL result.  All 47 functions 00h–2Eh are implemented:
 | `DEL/ERASE spec` | Wildcards; prompts Y/N for `*.*`; `dos->delall` set to 0x00 for DEL *.* |
 | `REN/RENAME old new` | Wildcards in both names; checks for duplicate |
 | `EDIT file` | Launches full-screen editor (see below) |
+| `BASIC file` | Loads and runs a `.BAS` file through the built-in interpreter (see below) |
 | `CREATE name` | `dos_create` + `dos_close`; rejects wildcards |
 | `MKDIR/MD name` | Allocate cluster; write `.`/`..`; write ATTR_DIR entry in current dir |
 | `RMDIR/RD name` | Verify empty; mark entry deleted; release cluster chain |
@@ -562,6 +565,109 @@ process receives them.
 
 ---
 
+## BASIC Interpreter (`command/basic.h / basic.c`)
+
+`basic_run(dos_t*, filename)` — called by `cmd_basic`.  Loads a line-numbered
+BASIC source file from the current directory and executes it.  Pure C
+interpreter; no x86 code is generated.
+
+### Program storage
+
+```c
+typedef struct { uint16_t linenum; char *text; } bas_line_t;
+```
+
+Up to 1 000 lines are kept in a heap-allocated `bas_t` struct, sorted by line
+number after load (insertion sort; programs are usually already in order).
+`text` holds the statement text with the leading line number stripped.
+
+### State struct (`bas_t`)
+
+```c
+typedef struct {
+    bas_line_t  lines[MAX_LINES]; int nlines;
+    int         pc;          // index into lines[]
+    double      numvars[26]; // A–Z
+    char        strvars[26][256]; // A$–Z$
+    for_frame_t forstack[FOR_DEPTH];  int fsp;   // depth 16
+    int         gosubstack[GOSUB_DEPTH]; int gsp; // depth 32
+    bool running, error;
+    dos_t *dos;
+} bas_t;
+```
+
+### Value type
+
+```c
+typedef struct { vtype_t type; double num; char str[256]; } val_t;
+```
+
+All numeric values are `double`.  String temporaries are copied into the
+`val_t.str` field (stack-allocated; no heap churn during expression
+evaluation).
+
+### Expression evaluator — recursive descent
+
+```
+expr      → and_expr  (OR  and_expr)*
+and_expr  → cmp_expr  (AND cmp_expr)*
+cmp_expr  → add_expr  (('='|'<>'|'<'|'>'|'<='|'>=') add_expr)?
+add_expr  → mul_expr  (('+'|'-') mul_expr)*
+mul_expr  → pow_expr  (('*'|'/') pow_expr)*
+pow_expr  → unary     ('^'  unary)*
+unary     → NOT unary | '-' unary | primary
+primary   → NUMBER | STRING | VARIABLE | FUNC'('args')' | '('expr')'
+```
+
+Comparisons return −1.0 (true) or 0.0 (false), matching classic BASIC
+semantics.  String `+` performs concatenation; type mismatches call
+`bas_error`.
+
+`match_kw` skips leading whitespace before comparing, so `TO`, `STEP`,
+`THEN`, `AND`, `OR` all work after arbitrary spacing.
+
+### Statements
+
+| Statement | Notes |
+|-----------|-------|
+| `REM` / `'` | Skip rest of statement |
+| `PRINT` | `;` = no separator between items, `,` = tab to next 14-column boundary; trailing `;` suppresses CRLF |
+| `LET var = expr` | `LET` keyword is optional |
+| `INPUT ["prompt";] var` | Uses `chardev_in` loop with backspace support |
+| `IF expr THEN lineno/stmt` | Evaluates expr; if non-zero, jumps or executes inline stmt |
+| `GOTO lineno` | Linear search for target line number |
+| `GOSUB lineno` | Push `pc+1`, jump; stack depth 32 |
+| `RETURN` | Pop GOSUB stack |
+| `FOR var = start TO end [STEP n]` | Push `for_frame_t`; stack depth 16 |
+| `NEXT [var]` | Increment by step; loop if not past limit |
+| `END` / `STOP` | Set `running = false` |
+
+Multiple statements per line are separated by `:`.
+
+### File loading (`bas_load`)
+
+Same FCB sequential-read pattern as `ed_load` in `edit.c`:
+1. `dos_makefcb` + `dos_open`
+2. `dos_setdma(dos, buf)` with local 128-byte stack buffer; `fcb.recsiz = 128`
+3. `dos_seqrd` loop → flat heap buffer
+4. Split on `\n`, parse leading `strtoul` as line number, `strdup` the rest
+5. Insertion-sort by line number; `dos_close`; restore DMA
+
+### Error handling
+
+`bas_error(b, msg)` prints `?msg IN line N\r\n` to the console via
+`chardev_out`, sets `b->error = true`, and halts the run loop.
+
+### Built-in functions
+
+Numeric: `INT ABS SQR RND LEN ASC VAL`
+String:  `CHR$ STR$ LEFT$ RIGHT$ MID$`
+
+Not supported: arrays, `DATA`/`READ`/`RESTORE`, `WHILE`/`WEND`, `DEF FN`,
+`ON GOTO`/`GOSUB`.
+
+---
+
 ## Host BIOS (`host/bios_host.h / bios_host.c`)
 
 `host_bios_t` — first member is `bios_t base` (cast-compatible).
@@ -638,8 +744,11 @@ make format-test  # formats test.img --720 and boots it
 
 `CFLAGS`: `-std=c11 -Wall -Wextra -Wpedantic -O2 -D_POSIX_C_SOURCE=200809L`
 
+Link: `$(CC) $(CFLAGS) -o msdos *.o -lm` — `-lm` is required for the BASIC
+interpreter (`sqrt`, `pow`, `floor`, `fabs`).
+
 Dependencies: standard C library + POSIX (`termios`, `select`, `ioctl`,
-`read`).  No external libraries.
+`read`) + libm.  No other external libraries.
 
 ---
 

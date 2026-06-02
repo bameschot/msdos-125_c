@@ -1,5 +1,6 @@
 #include "command.h"
 #include "edit.h"
+#include "basic.h"
 #include "../kernel/chardev.h"
 #include "../kernel/fcb.h"
 #include "../kernel/fileio.h"
@@ -970,6 +971,19 @@ static void cmd_rmdir(dos_t *dos, const char *args)
 }
 
 /* -----------------------------------------------------------------------
+ * BASIC command
+ * ----------------------------------------------------------------------- */
+
+static void cmd_basic(dos_t *dos, const char *args)
+{
+    char word[14];
+    args = skip_space(args);
+    copy_word(args, word, sizeof(word));
+    if (!word[0]) { print_str(dos, "Usage: BASIC filename\r\n"); return; }
+    basic_run(dos, word);
+}
+
+/* -----------------------------------------------------------------------
  * HELP command
  * ----------------------------------------------------------------------- */
 
@@ -1028,6 +1042,8 @@ static const struct {
       "Remove an empty directory." },
     { "RD",     "RD dirname",
       "Alias for RMDIR." },
+    { "BASIC",  "BASIC filename",
+      "Run a BASIC program file (.BAS) from the current directory." },
     { NULL, NULL, NULL }
 };
 
@@ -1108,6 +1124,7 @@ static const cmd_entry_t cmd_table[] = {
     { "MD",     cmd_mkdir  },
     { "RMDIR",  cmd_rmdir  },
     { "RD",     cmd_rmdir  },
+    { "BASIC",  cmd_basic  },
     { "HELP",   cmd_help   },
     { NULL,     NULL       }
 };

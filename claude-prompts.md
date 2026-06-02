@@ -10,5 +10,7 @@
 9. change the moving the arrows closes the editor, ^Q command does not work on keyboard
 10. what control keys are the commands in the editor supposed to listen to? for example ^Q 
 11. rename the MKFILE to CREATE command (also update readme.md and HELP reference)
-12. 
+12. add MKDIR and RMDIR and CD commands commands to create, delete and navigate to folders
+13. update readme and claude.md with this change
+14. add a rudimentary version of basic where the command BASIC can be used to run a given file
 
