@@ -662,8 +662,11 @@ static bool exec_one_stmt(bas_t *b, const char *s)
     s = skip_ws(s);
     if (!*s || *s == '\n' || *s == '\r') return false;
 
-    /* REM or ' */
-    if (strncasecmp(s, "REM", 3) == 0 || *s == '\'') return false;
+    /* REM or ' — stop processing the rest of this line entirely.
+     * Returning true tells exec_line to return immediately; basic_run
+     * sees pc unchanged and advances to the next line.  This prevents
+     * a ':' inside a comment from being treated as a statement separator. */
+    if (strncasecmp(s, "REM", 3) == 0 || *s == '\'') return true;
 
     /* PRINT */
     if (match_kw(&s, "PRINT") || match_kw(&s, "?")) {

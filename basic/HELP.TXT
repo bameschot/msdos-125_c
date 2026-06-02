@@ -1,0 +1,97 @@
+MS-DOS 1.25 C PORT - BASIC INTERPRETER REFERENCE
+=================================================
+
+RUNNING A PROGRAM
+-----------------
+  A>BASIC FILENAME.BAS
+
+CREATING OR EDITING A PROGRAM
+------------------------------
+  A>EDIT FILENAME.BAS     (opens the full-screen editor)
+  Ctrl+W to save, Ctrl+X to quit.
+
+PROGRAM STRUCTURE
+-----------------
+  Every line starts with a LINE NUMBER (1-65535).
+  Lines execute in ascending numeric order.
+  Multiple statements on one line are separated by :
+
+  10 REM This is a comment
+  20 LET A = 42
+  30 PRINT "The answer is"; A
+  40 END
+
+VARIABLES
+---------
+  Numeric : A through Z    (64-bit floating point)
+  String  : A$ through Z$  (up to 255 characters)
+  All variables start at 0 / empty string.
+  No arrays are supported.
+
+STATEMENTS
+----------
+  REM text            Comment (also: ' text)
+  PRINT [expr]        Print. ; = no gap, , = next tab column (col 14).
+                      Trailing ; suppresses the newline.
+  LET var = expr      Assign a value. LET keyword is optional.
+  INPUT ["p";] var    Print optional prompt then read from keyboard.
+  IF expr THEN num    Jump to line number if expr is non-zero.
+  IF expr THEN stmt   Execute a single statement if expr is non-zero.
+  GOTO num            Unconditional jump to line number.
+  GOSUB num           Call subroutine at line number (stack: 32 deep).
+  RETURN              Return from subroutine.
+  FOR v=a TO b        Loop v from a to b.
+    [STEP n]          Optional step size (default 1).
+  NEXT [v]            End of FOR body (stack: 16 deep).
+  END or STOP         Halt the program.
+
+  NOTE: IF ... THEN executes only ONE statement or a line number.
+        To run multiple lines on a true condition, use GOTO.
+
+OPERATORS
+---------
+  Arithmetic : + - * / ^    (^ = power, evaluated right to left)
+  String     : +            (string concatenation)
+  Comparison : = <> < > <= >=  (return -1 true, 0 false)
+  Logical    : AND  OR  NOT
+
+  Precedence (high to low):
+    NOT  ^  * /  + -  = <> < > <= >=  AND  OR
+
+BUILT-IN FUNCTIONS
+------------------
+  INT(x)           Floor toward negative infinity
+  ABS(x)           Absolute value
+  SQR(x)           Square root
+  RND(x)           Random float, 0 <= r < 1
+  LEN(s$)          Length of string
+  ASC(s$)          ASCII code of first character
+  VAL(s$)          Parse string as a number
+  CHR$(n)          Character with ASCII code n
+  STR$(n)          Convert number to string
+  LEFT$(s$, n)     First n characters of s$
+  RIGHT$(s$, n)    Last n characters of s$
+  MID$(s$, p [,n]) Substring starting at position p (1-based)
+
+ERROR MESSAGES
+--------------
+  ?SYNTAX ERROR IN n           Bad or unknown statement
+  ?TYPE MISMATCH IN n          Wrong type for operator or function
+  ?DIVISION BY ZERO IN n       Attempted division by zero
+  ?UNDEFINED LINE nnn IN n     GOTO/GOSUB to non-existent line
+  ?NEXT WITHOUT FOR IN n       NEXT with no matching FOR
+  ?RETURN WITHOUT GOSUB IN n   RETURN with no matching GOSUB
+  ?GOSUB OVERFLOW IN n         More than 32 nested GOSUB calls
+  ?FOR OVERFLOW IN n           More than 16 nested FOR loops
+
+EXAMPLE PROGRAMS ON THIS DISK
+------------------------------
+  GUESS.BAS     Number guessing game
+  HAMURABI.BAS  Rule ancient Sumeria for 10 years
+  CALC.BAS      4-function calculator with memory
+  TIMES.BAS     Multiplication tables
+  FIB.BAS       Fibonacci sequence
+
+  To run : BASIC GUESS.BAS
+  To edit: EDIT GUESS.BAS
+  To list: TYPE GUESS.BAS
