@@ -12,29 +12,27 @@
 
 uint32_t fileio_getrec(const fcb_t *fcb)
 {
-    uint16_t ext = fcb->extent;
-    uint8_t  nr  = fcb->nr;
-    /* Assemble: extent high byte = bits 14-7, nr = bits 6-0 */
-    uint32_t rec = ((uint32_t)(ext >> 1) << 7) | (nr & 0x7F);
-    if (ext & 1) rec |= (1u << 7);
-    return rec;
+    /* Record = (EXTENT << 7) | NR[6:0]
+     * NR holds bits 6:0 of the record number.
+     * EXTENT holds bits 22:7 (one EXTENT = 128 records). */
+    return ((uint32_t)fcb->extent << 7) | (fcb->nr & 0x7F);
 }
 
 /* -----------------------------------------------------------------------
  * SETNREX — encode record position back into FCB
  * ----------------------------------------------------------------------- */
 
-void fileio_setnrex(fcb_t *fcb, uint32_t recpos, uint16_t reccnt, uint8_t dskerr)
+void fileio_setnrex(fcb_t *fcb, uint32_t new_pos, uint16_t reccnt, uint8_t dskerr)
 {
-    (void)dskerr;
-    uint32_t pos = recpos + reccnt - 1;  /* position after transfer */
-    fcb->nr     = (uint8_t)(pos & 0x7F);
-    fcb->extent = (uint16_t)((pos >> 7) & 0xFFFF);
-    /* Store 24-bit random record */
-    fcb->rr[0] = (uint8_t)(pos & 0xFF);
-    fcb->rr[1] = (uint8_t)((pos >> 8) & 0xFF);
-    fcb->rr[2] = (uint8_t)((pos >> 16) & 0xFF);
-    fcb->rr[3] = (uint8_t)((pos >> 24) & 0xFF);
+    /* Encode new_pos (the next sequential position) into NR and EXTENT.
+     * Also update the RR (random record) field with the same value. */
+    (void)reccnt; (void)dskerr;
+    fcb->nr     = (uint8_t)(new_pos & 0x7F);
+    fcb->extent = (uint16_t)(new_pos >> 7);
+    fcb->rr[0]  = (uint8_t)(new_pos & 0xFF);
+    fcb->rr[1]  = (uint8_t)((new_pos >> 8)  & 0xFF);
+    fcb->rr[2]  = (uint8_t)((new_pos >> 16) & 0xFF);
+    fcb->rr[3]  = (uint8_t)((new_pos >> 24) & 0xFF);
 }
 
 /* -----------------------------------------------------------------------
@@ -79,19 +77,14 @@ static bool setup(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count,
     uint64_t bytpos64 = (uint64_t)recpos * recsiz;
     r->bytpos = (uint32_t)bytpos64;
 
-    /* For read: check against file size */
+    /* For read: trim to bytes actually available in the file. */
+    uint32_t total_bytes = (uint32_t)count * recsiz;
     if (!writing) {
         uint32_t remaining = (fcb->filsiz > r->bytpos) ? fcb->filsiz - r->bytpos : 0;
         if (remaining == 0) { dos->dskerr = DOS_EOF; return false; }
-        uint32_t max_bytes = (uint32_t)count * recsiz;
-        if (remaining < max_bytes) {
-            uint16_t recs = (uint16_t)(remaining / recsiz);
-            if (recs == 0) { dos->dskerr = DOS_EOF; return false; }
-            count = recs;
-        }
+        if (remaining < total_bytes)
+            total_bytes = remaining;   /* may be less than one full record */
     }
-
-    uint32_t total_bytes = (uint32_t)count * recsiz;
     r->secpos    = (uint16_t)(r->bytpos / dp->secsiz);
     r->bytsecpos = (uint16_t)(r->bytpos % dp->secsiz);
     r->clusnum   = (uint16_t)(r->secpos >> dp->clusshft);
@@ -236,17 +229,20 @@ static uint8_t do_load(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
         bytes_read += r.bytcnt2;
     }
 
-    /* Fill remainder of last record with zeros if partial */
+    /* Pad the last partial record with zeros (matching assembly SETFCB logic).
+     * 'dma' now points to the byte after all whole-sector data; r.bytcnt2
+     * bytes of partial sector follow, so the fill starts at dma + r.bytcnt2,
+     * which is exactly NEXTADD in the original. */
     uint16_t transferred_recs = (uint16_t)(bytes_read / recsiz);
     uint16_t remainder        = (uint16_t)(bytes_read % recsiz);
     if (remainder && transferred_recs < count) {
-        memset(dma + remainder - r.bytcnt2, 0, recsiz - remainder);
+        memset(dma + r.bytcnt2, 0, recsiz - remainder);
         transferred_recs++;
         dos->dskerr = DOS_PARTIAL;
     }
     if (transferred_recs < count) dos->dskerr = DOS_EOF;
 
-    fileio_setnrex(fcb, recpos, transferred_recs, dos->dskerr);
+    fileio_setnrex(fcb, recpos + transferred_recs, 0, dos->dskerr);
     return dos->dskerr;
 
 io_err:
@@ -361,7 +357,10 @@ uint8_t dos_seqrd(dos_t *dos, fcb_t *fcb)
 {
     uint32_t pos = fileio_getrec(fcb);
     uint8_t  rc  = do_load(dos, fcb, pos, 1);
-    if (rc == 0) fileio_setnrex(fcb, pos + 1, 0, 0);
+    /* Advance position if at least one record (or partial) was transferred
+     * (DOS_OK or DOS_PARTIAL), matching FINSEQ: CX!=0 → pos+1. */
+    if (rc == DOS_OK || rc == DOS_PARTIAL)
+        fileio_setnrex(fcb, pos + 1, 0, 0);
     return rc;
 }
 
@@ -369,7 +368,8 @@ uint8_t dos_seqwrt(dos_t *dos, fcb_t *fcb)
 {
     uint32_t pos = fileio_getrec(fcb);
     uint8_t  rc  = do_store(dos, fcb, pos, 1);
-    if (rc == 0) fileio_setnrex(fcb, pos + 1, 0, 0);
+    if (rc == DOS_OK || rc == DOS_PARTIAL)
+        fileio_setnrex(fcb, pos + 1, 0, 0);
     return rc;
 }
 

@@ -214,6 +214,112 @@ static void cmd_type(dos_t *dos, const char *args)
 }
 
 /* -----------------------------------------------------------------------
+ * OPEN — open a file and display its contents as ASCII
+ * ----------------------------------------------------------------------- */
+
+/* Render one byte to the console using safe ASCII representation:
+ *   0x09 TAB          → spaces to next 8-column tab stop
+ *   0x0A LF           → newline
+ *   0x0D CR           → (swallowed; LF drives the newline)
+ *   0x20–0x7E         → as-is (printable ASCII)
+ *   0x00–0x1F, 0x7F   → ^X caret notation  (e.g. NUL → ^@, ESC → ^[)
+ *   0x80–0xFF         → '.' (non-ASCII high byte)
+ */
+static void open_put_byte(dos_t *dos, uint8_t c)
+{
+    if (c == '\r') {
+        return;   /* skip bare CR; LF drives line breaks */
+    }
+    if (c == '\n') {
+        chardev_out(dos, '\r');
+        chardev_out(dos, '\n');
+        return;
+    }
+    if (c == '\t') {
+        /* expand to next 8-column boundary */
+        uint8_t spaces = (uint8_t)(8 - (dos->carpos & 7));
+        for (uint8_t i = 0; i < spaces; i++)
+            chardev_out(dos, ' ');
+        return;
+    }
+    if (c >= 0x20 && c <= 0x7E) {
+        chardev_out(dos, c);
+        return;
+    }
+    if (c == 0x7F) {
+        chardev_out(dos, '^');
+        chardev_out(dos, '?');
+        return;
+    }
+    if (c < 0x20) {
+        /* caret notation: ^@ through ^_ */
+        chardev_out(dos, '^');
+        chardev_out(dos, (uint8_t)(c + '@'));
+        return;
+    }
+    /* 0x80–0xFF: non-ASCII */
+    chardev_out(dos, '.');
+}
+
+static void cmd_open(dos_t *dos, const char *args)
+{
+    char word[13];
+    args = skip_space(args);
+    copy_word(args, word, sizeof(word));
+    if (!word[0]) { print_str(dos, "Required parameter missing\r\n"); return; }
+
+    fcb_t fcb;
+    memset(&fcb, 0, sizeof(fcb));
+    const char *p = word;
+    dos_makefcb(dos, &p, &fcb, 0);
+
+    if (dos_open(dos, &fcb) != DOS_OK) {
+        print_str(dos, "File not found\r\n"); return;
+    }
+
+    /* Header */
+    print_str(dos, "\r\n--- ");
+    print_str(dos, word);
+    print_str(dos, " ---\r\n");
+
+    /* Read 128 bytes per record for efficiency */
+    uint8_t buf[128];
+    dos_setdma(dos, buf);
+    fcb.recsiz = 128;
+
+    uint32_t total_bytes = 0;
+    uint32_t filsiz      = fcb.filsiz;
+    uint8_t  rc;
+
+    while ((rc = dos_seqrd(dos, &fcb)) == DOS_OK || rc == DOS_PARTIAL) {
+        /* Full record: 128 bytes.  Partial (last): remainder of file size. */
+        uint16_t n = 128;
+        if (rc == DOS_PARTIAL) {
+            uint32_t rem = filsiz % 128;
+            n = rem ? (uint16_t)rem : 128;
+        }
+        for (uint16_t i = 0; i < n; i++)
+            open_put_byte(dos, buf[i]);
+        total_bytes += n;
+        if (rc == DOS_PARTIAL) break;
+    }
+
+    /* Ensure output ends on a new line */
+    if (dos->carpos != 0) {
+        chardev_out(dos, '\r');
+        chardev_out(dos, '\n');
+    }
+
+    /* Footer */
+    print_str(dos, "--- ");
+    print_uint(dos, total_bytes, 1);
+    print_str(dos, " bytes ---\r\n");
+
+    dos_close(dos, &fcb);
+    dos_setdma(dos, dos->psp + 0x80);
+}
+
+/* -----------------------------------------------------------------------
  * COPY command
  * ----------------------------------------------------------------------- */
 
@@ -486,6 +592,50 @@ static void cmd_chkdsk(dos_t *dos, const char *args)
 }
 
 /* -----------------------------------------------------------------------
+ * MKFILE — create an empty file
+ * ----------------------------------------------------------------------- */
+
+static void cmd_mkfile(dos_t *dos, const char *args)
+{
+    char word[13];
+    args = skip_space(args);
+    copy_word(args, word, sizeof(word));
+
+    if (!word[0]) {
+        print_str(dos, "Required parameter missing\r\n");
+        return;
+    }
+
+    fcb_t fcb;
+    memset(&fcb, 0, sizeof(fcb));
+    const char *p = word;
+    uint8_t rc = dos_makefcb(dos, &p, &fcb, 0);
+    if (rc == DOS_ERR) {
+        print_str(dos, "Invalid file name\r\n");
+        return;
+    }
+
+    /* Wildcards not allowed in a create target */
+    for (int i = 1; i < 12; i++) {
+        if (((uint8_t*)&fcb)[i] == '?') {
+            print_str(dos, "Wildcards not allowed\r\n");
+            return;
+        }
+    }
+
+    if (dos_create(dos, &fcb) != DOS_OK) {
+        print_str(dos, "Cannot create file\r\n");
+        return;
+    }
+
+    dos_close(dos, &fcb);
+
+    print_str(dos, "Created: ");
+    print_str(dos, word);
+    print_crlf(dos);
+}
+
+/* -----------------------------------------------------------------------
  * HELP command
  * ----------------------------------------------------------------------- */
 
@@ -526,6 +676,10 @@ static const struct {
       "Display a file on the console." },
     { "VER",    "VER",
       "Display the MS-DOS version." },
+    { "MKFILE", "MKFILE filename",
+      "Create an empty file with the given name." },
+    { "OPEN",   "OPEN filename",
+      "Open a file and display its contents as ASCII." },
     { NULL, NULL, NULL }
 };
 
@@ -597,6 +751,8 @@ static const cmd_entry_t cmd_table[] = {
     { "PAUSE",  cmd_pause  },
     { "REM",    NULL       },   /* comment — ignore */
     { "CHKDSK", cmd_chkdsk },
+    { "MKFILE", cmd_mkfile },
+    { "OPEN",   cmd_open   },
     { "HELP",   cmd_help   },
     { NULL,     NULL       }
 };

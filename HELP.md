@@ -281,6 +281,48 @@ disk before exiting.
 
 ---
 
+### OPEN — Display File Contents as ASCII
+
+```
+OPEN filename
+```
+
+Opens a file and displays its full contents on the console, rendering every
+byte as a safe ASCII representation.  Unlike `TYPE`, `OPEN` does **not** stop
+at a Ctrl-Z (0x1A) byte, so the entire file is always shown.
+
+**Byte rendering rules:**
+
+| Byte range | Displayed as |
+|------------|-------------|
+| `0x09` TAB | Spaces to the next 8-column tab stop |
+| `0x0A` LF  | Newline |
+| `0x0D` CR  | Suppressed (LF drives line breaks) |
+| `0x20`–`0x7E` | Character as-is (printable ASCII) |
+| `0x7F` DEL | `^?` |
+| `0x00`–`0x1F` other control chars | Caret notation: `^@` `^A` … `^_` |
+| `0x80`–`0xFF` high bytes | `.` (non-ASCII marker) |
+
+A header line (`--- FILENAME ---`) is printed before the content, and a
+footer (`--- N bytes ---`) after it.
+
+**Examples:**
+
+```
+OPEN README.TXT
+OPEN B:CONFIG.SYS
+OPEN BINARY.COM
+```
+
+**Error conditions:**
+
+| Message | Cause |
+|---------|-------|
+| `Required parameter missing` | No filename supplied |
+| `File not found` | File does not exist on the current drive |
+
+---
+
 ### PAUSE — Wait for a Keypress
 
 ```
@@ -289,6 +331,38 @@ PAUSE
 
 Prints `Strike a key when ready . . .` and waits for the user to press any
 key before continuing.
+
+---
+
+### MKFILE — Create an Empty File
+
+```
+MKFILE filename
+```
+
+Creates a new, empty (zero-byte) file with the given name in the current
+directory of the current drive.  If a file with that name already exists it
+is truncated to zero bytes (equivalent to `CREATE` followed by `CLOSE`).
+
+Wildcards (`?`, `*`) are not permitted.  The name must follow the 8.3
+convention.
+
+**Examples:**
+
+```
+MKFILE NOTES.TXT
+MKFILE DATA.DAT
+MKFILE B:EMPTY.BIN
+```
+
+**Error conditions:**
+
+| Message | Cause |
+|---------|-------|
+| `Required parameter missing` | No filename supplied |
+| `Invalid file name` | Name contains illegal characters |
+| `Wildcards not allowed` | Name contains `?` or `*` |
+| `Cannot create file` | Disk full or root directory full |
 
 ---
 
