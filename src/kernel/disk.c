@@ -89,7 +89,19 @@ int disk_fatread(dos_t *dos)
         changed = dos->bios->disk_change(dos->bios, dp->drvnum);
 
     if (changed != 0) {
-        /* Invalidate buffers */
+        /* Flush the directory buffer before discarding its address.
+         * dirbufid encodes (devnum<<24)|absolute_sector; if we reset it
+         * to 0xFFFFFFFF without flushing, a subsequent disk_chkdirwrite
+         * would compute sec = 0x00FFFFFF (16 MB sector) and seek the
+         * image file to ~8 GB before writing. */
+        if (dos->dirtydir && dos->dirbufid != 0xFFFFFFFF) {
+            uint8_t ddev  = (uint8_t)(dos->dirbufid >> 24);
+            dpb_t  *dirdp = disk_getbp(dos, ddev);
+            if (dirdp) disk_dirwrite(dos, dirdp);
+            dos->dirtydir = 0;
+        }
+
+        /* Invalidate single-sector data buffer */
         if (dos->bufdrvno == dp->drvnum) {
             dos->bufsecno  = 0xFFFFFFFF;
             dos->bufdrvno  = 0xFF;

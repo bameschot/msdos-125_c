@@ -13,4 +13,6 @@
 12. add MKDIR and RMDIR and CD commands commands to create, delete and navigate to folders
 13. update readme and claude.md with this change
 14. add a rudimentary version of basic where the command BASIC can be used to run a given file
+15. add basic syntax and examples to readme.md including how to create, edit and run a file
+16. prepare a test disk (720kb) that contains a basic text file containing the help, a series of example basic programs in the operating system's dialect (including at least the basic game hamurabi,  a calculator, ) next to writing the games to disk write the source code to a new folder called basic in the repository
 

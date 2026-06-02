@@ -348,7 +348,7 @@ static int hb_disk_write(bios_t *b, uint8_t unit, bool verify,
 static int hb_disk_change(bios_t *b, uint8_t unit)
 {
     (void)b; (void)unit;
-    return 1;   /* always "don't know" — re-read FAT */
+    return 0;   /* image file is never swapped — disk has not changed */
 }
 
 /* -----------------------------------------------------------------------
