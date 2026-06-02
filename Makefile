@@ -13,6 +13,7 @@ SRCS = \
   src/kernel/datetime.c \
   src/kernel/kernel.c   \
   src/command/command.c \
+  src/command/edit.c   \
   src/host/bios_host.c  \
   src/host/main.c
 

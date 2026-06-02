@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdbool.h>
+#include "keys.h"
 
 /* -----------------------------------------------------------------------
  * BIOS interface — the hardware abstraction layer that replaces IO.ASM.
@@ -47,6 +48,17 @@ struct bios_s {
 
     /* Screen control (optional) */
     void    (*cls)(bios_t *b);          /* clear screen; may be NULL */
+
+    /* Extended keyboard read — blocks until a key is pressed.
+     * Returns a KEY_* constant (see keys.h).  Handles ANSI escape sequences
+     * for arrow keys, Page Up/Down, Home, End, Delete, Insert, F-keys.
+     * May be NULL; the editor will fall back to bios->in() if so. */
+    int     (*getkey)(bios_t *b);
+
+    /* Query current terminal dimensions.
+     * Falls back to 24×80 if the implementation cannot determine the size.
+     * May be NULL. */
+    void    (*getscreensize)(bios_t *b, int *rows, int *cols);
 
     /* Drive mapping: called after reading FAT to allow remapping.
      * Returns new device number.  unit = old unit, fat_byte = FAT[0]. */

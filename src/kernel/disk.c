@@ -168,8 +168,10 @@ uint8_t *disk_bufsec(dos_t *dos, dpb_t *dp,
         if (rc != 0) return NULL;
     }
 
-    /* Pre-read unless this is a full-sector overwrite of new space */
-    bool need_read = !write_mode || (dos->secpos <= dos->valsec);
+    /* Pre-read only when overwriting a sector that has been written before
+     * (secpos < valsec).  New sectors (secpos >= valsec) skip the pre-read,
+     * matching the assembly BUFWRT: JA NOREAD if (SECPOS+1) > VALSEC. */
+    bool need_read = !write_mode || (dos->secpos < dos->valsec);
     if (need_read) {
         dos->bufsecno  = 0xFFFFFFFF;
         dos->bufdrvno  = 0xFF;

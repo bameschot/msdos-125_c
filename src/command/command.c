@@ -1,4 +1,5 @@
 #include "command.h"
+#include "edit.h"
 #include "../kernel/chardev.h"
 #include "../kernel/fcb.h"
 #include "../kernel/fileio.h"
@@ -592,6 +593,19 @@ static void cmd_chkdsk(dos_t *dos, const char *args)
 }
 
 /* -----------------------------------------------------------------------
+ * EDIT — screen-based text file editor
+ * ----------------------------------------------------------------------- */
+
+static void cmd_edit(dos_t *dos, const char *args)
+{
+    char word[14];
+    args = skip_space(args);
+    copy_word(args, word, sizeof(word));
+    if (!word[0]) { print_str(dos, "Required parameter missing\r\n"); return; }
+    editor_run(dos, word);
+}
+
+/* -----------------------------------------------------------------------
  * MKFILE — create an empty file
  * ----------------------------------------------------------------------- */
 
@@ -676,6 +690,8 @@ static const struct {
       "Display a file on the console." },
     { "VER",    "VER",
       "Display the MS-DOS version." },
+    { "EDIT",   "EDIT filename",
+      "Open a text file for viewing and editing." },
     { "MKFILE", "MKFILE filename",
       "Create an empty file with the given name." },
     { "OPEN",   "OPEN filename",
@@ -751,6 +767,7 @@ static const cmd_entry_t cmd_table[] = {
     { "PAUSE",  cmd_pause  },
     { "REM",    NULL       },   /* comment — ignore */
     { "CHKDSK", cmd_chkdsk },
+    { "EDIT",   cmd_edit   },
     { "MKFILE", cmd_mkfile },
     { "OPEN",   cmd_open   },
     { "HELP",   cmd_help   },

@@ -47,10 +47,15 @@ uint16_t fat_fndclus(dos_t *dos, dpb_t *dp, fcb_t *fcb,
     uint16_t  pos  = fcb->cluspos;
 
     if (clus == 0) {
-        /* new / empty file */
         clus = fcb->firclus;
         pos  = 0;
-    } else if (count < pos) {
+    }
+    if (clus == 0) {
+        /* File has no clusters yet — signal that allocation is needed. */
+        *out_pos = 0;
+        return FAT12_EOF;
+    }
+    if (count < pos) {
         /* need to go backwards — restart from beginning */
         clus = fcb->firclus;
         pos  = 0;

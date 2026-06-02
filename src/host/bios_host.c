@@ -14,11 +14,21 @@
 #  include <unistd.h>
 #  include <fcntl.h>
 #  include <sys/select.h>
+#  include <sys/ioctl.h>
 #  define _BSD_SOURCE  /* for cfmakeraw on older glibc */
 #endif
 
 /* -----------------------------------------------------------------------
  * Terminal raw mode
+ *
+ * Full raw-mode setup so that:
+ *   - IXON/IXOFF cleared: Ctrl+S and Ctrl+Q are passed to the application,
+ *     not swallowed for software flow control.
+ *   - ICRNL cleared: CR is not translated to NL on input.
+ *   - ECHO/ICANON/IEXTEN cleared: no line editing, no extended processing.
+ *   - ISIG cleared: Ctrl+C/Z do not send signals (we handle them ourselves).
+ *   - VSTART/VSTOP explicitly disabled: belt-and-suspenders for XON/XOFF.
+ *   - OPOST kept: output still does CR/LF translation so printf works.
  * ----------------------------------------------------------------------- */
 
 #ifndef _WIN32
@@ -30,14 +40,35 @@ static void enter_raw_mode(void)
     if (!isatty(STDIN_FILENO)) return;
     tcgetattr(STDIN_FILENO, &g_saved_termios);
     struct termios raw = g_saved_termios;
-    raw.c_iflag &= (tcflag_t)~(IXON|ICRNL|BRKINT|INPCK|ISTRIP);
-    raw.c_oflag &= (tcflag_t)~(0);   /* keep OPOST */
+
+    /* Input: disable flow control, CR→NL, parity checks, stripping */
+    raw.c_iflag &= (tcflag_t)~(IXON | IXOFF | IXANY |
+                                ICRNL | INLCR | IGNCR |
+                                BRKINT | INPCK | ISTRIP);
+
+    /* Output: keep OPOST so printf("\r\n") still works */
     raw.c_oflag |= OPOST;
+
+    /* Control: 8-bit characters */
     raw.c_cflag |= CS8;
-    raw.c_lflag &= (tcflag_t)~(ECHO|ICANON|IEXTEN|ISIG);
+
+    /* Local: no echo, no canonical, no extended processing, no signals */
+    raw.c_lflag &= (tcflag_t)~(ECHO | ECHOE | ECHOK | ECHONL |
+                                ICANON | IEXTEN | ISIG);
+
+    /* One byte at a time, no timeout */
     raw.c_cc[VMIN]  = 1;
     raw.c_cc[VTIME] = 0;
-    raw.c_oflag |= OPOST;   /* keep output processing (newline translation) */
+
+    /* Explicitly disable start/stop characters so Ctrl+Q and Ctrl+S
+     * are never intercepted regardless of IXON/IXOFF state. */
+#ifdef VSTART
+    raw.c_cc[VSTART] = 0;
+#endif
+#ifdef VSTOP
+    raw.c_cc[VSTOP]  = 0;
+#endif
+
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
     g_raw_mode = 1;
 }
@@ -49,18 +80,52 @@ static void leave_raw_mode(void)
         g_raw_mode = 0;
     }
 }
+
+/* Shared EOF flag — set when stdin reaches end of file. */
+static int g_eof = 0;
+
+/* -----------------------------------------------------------------------
+ * Low-level stdin read using read(2) instead of getchar().
+ *
+ * This is critical for correct escape-sequence decoding: getchar() pulls
+ * bytes into a stdio internal buffer, so a subsequent select() on the raw
+ * file descriptor may report "no data" even though the full ESC [ A
+ * sequence is already buffered — causing the 50 ms timeout to fire and
+ * KEY_ESC to be returned instead of KEY_UP.  Using read() directly keeps
+ * select() and the actual byte source in sync.
+ * ----------------------------------------------------------------------- */
+
+/* Read exactly one byte from STDIN_FILENO. Returns -1 on EOF/error. */
+static int stdin_readbyte(void)
+{
+    if (g_eof) return -1;
+    uint8_t  c;
+    ssize_t  n;
+    do { n = read(STDIN_FILENO, &c, 1); } while (n < 0 && errno == EINTR);
+    if (n <= 0) { g_eof = 1; return -1; }
+    return (int)(unsigned int)c;
+}
+
+/* Return true if at least one byte is available within `us` microseconds.
+ * Because we use read() (not getchar()), this accurately reflects reality. */
+static int stdin_ready(int us)
+{
+    struct timeval tv = { 0, us };
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0;
+}
 #endif
 
 /* -----------------------------------------------------------------------
  * Console BIOS callbacks
  * ----------------------------------------------------------------------- */
 
-static int g_eof = 0;
-
-static int  hb_stat(bios_t *b)
+static int hb_stat(bios_t *b)
 {
     (void)b;
-    if (g_eof) return 1;   /* EOF counts as data available (returns 0x1A) */
+    if (g_eof) return 1;
 #ifdef _WIN32
     return _kbhit() ? 1 : 0;
 #else
@@ -68,22 +133,22 @@ static int  hb_stat(bios_t *b)
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(STDIN_FILENO, &fds);
-    return select(1, &fds, NULL, NULL, &tv) > 0 ? 1 : 0;
+    return select(STDIN_FILENO + 1, &fds, NULL, NULL, &tv) > 0 ? 1 : 0;
 #endif
 }
 
-static int  hb_in(bios_t *b)
+static int hb_in(bios_t *b)
 {
     (void)b;
     if (g_eof) return 0x1A;
 #ifdef _WIN32
     int c = _getch();
-    if (c == EOF) { g_eof = 1; return 0x1A; }
+    if (c < 0) { g_eof = 1; return 0x1A; }
     return c;
 #else
-    int c = getchar();
-    if (c == EOF) { g_eof = 1; return 0x1A; }
-    /* Translate bare '\n' from piped input to '\r' for DOS */
+    int c = stdin_readbyte();
+    if (c < 0) return 0x1A;
+    /* Translate bare LF (piped input) to CR for the DOS layer */
     if (c == '\n') return '\r';
     return c;
 #endif
@@ -99,13 +164,135 @@ static void hb_out(bios_t *b, uint8_t c)
 static void hb_print(bios_t *b, uint8_t c)
 {
     (void)b;
-    /* In the host, printer output goes to stderr */
     fputc(c, stderr);
 }
 
 static int  hb_auxin(bios_t *b)  { (void)b; return 0; }
 static void hb_auxout(bios_t *b, uint8_t c) { (void)b; (void)c; }
 static void hb_flush(bios_t *b)  { (void)b; }
+
+/* -----------------------------------------------------------------------
+ * getkey — extended keyboard read with ANSI escape-sequence decoding
+ * ----------------------------------------------------------------------- */
+
+#ifndef _WIN32
+/* Read one raw byte for escape-sequence parsing (no \n→\r translation). */
+static int raw_getbyte(void)
+{
+    int c = stdin_readbyte();
+    return (c < 0) ? KEY_ESC : c;
+}
+#endif
+
+static int hb_getkey(bios_t *b)
+{
+    (void)b;
+    if (g_eof) return KEY_ESC;
+#ifdef _WIN32
+    int c = _getch();
+    if (c == 0 || c == 0xE0) {
+        /* Extended key from Windows console */
+        int ext = _getch();
+        switch (ext) {
+        case 72: return KEY_UP;
+        case 80: return KEY_DOWN;
+        case 75: return KEY_LEFT;
+        case 77: return KEY_RIGHT;
+        case 71: return KEY_HOME;
+        case 79: return KEY_END;
+        case 73: return KEY_PGUP;
+        case 81: return KEY_PGDN;
+        case 83: return KEY_DEL;
+        case 82: return KEY_INS;
+        default: return KEY_ESC;
+        }
+    }
+    return c;
+#else
+    int c = raw_getbyte();
+    if (c != 0x1B) return c;          /* plain ASCII or control character */
+
+    /* ESC received — check whether more bytes follow (escape sequence).
+     * Because we use read() not getchar(), select() accurately reflects
+     * what is buffered in the kernel: all bytes of an arrow-key sequence
+     * (ESC [ A) arrive together, so 50 ms is far more than enough. */
+    if (!stdin_ready(50000)) return KEY_ESC;
+
+    int c2 = raw_getbyte();
+
+    if (c2 == '[') {
+        if (!stdin_ready(50000)) return KEY_ESC;
+        int c3 = raw_getbyte();
+        switch (c3) {
+        case 'A': return KEY_UP;
+        case 'B': return KEY_DOWN;
+        case 'C': return KEY_RIGHT;
+        case 'D': return KEY_LEFT;
+        case 'H': return KEY_HOME;
+        case 'F': return KEY_END;
+        case '1':
+            if (stdin_ready(50000)) {
+                int c4 = raw_getbyte();
+                if (c4 == ';' && stdin_ready(50000)) {
+                    /* ESC[1;5X — ctrl+arrow combos */
+                    raw_getbyte();   /* modifier digit */
+                    if (stdin_ready(50000)) {
+                        int c5 = raw_getbyte();
+                        if (c5 == 'H') return KEY_CTRL_HOME;
+                        if (c5 == 'F') return KEY_CTRL_END;
+                    }
+                    return KEY_ESC;
+                }
+                /* ESC[1~ = Home */
+                if (c4 == '~') return KEY_HOME;
+            }
+            return KEY_HOME;
+        case '2': if (stdin_ready(50000)) raw_getbyte(); return KEY_INS;
+        case '3': if (stdin_ready(50000)) raw_getbyte(); return KEY_DEL;
+        case '4': if (stdin_ready(50000)) raw_getbyte(); return KEY_END;
+        case '5': if (stdin_ready(50000)) raw_getbyte(); return KEY_PGUP;
+        case '6': if (stdin_ready(50000)) raw_getbyte(); return KEY_PGDN;
+        case '7': if (stdin_ready(50000)) raw_getbyte(); return KEY_HOME;
+        case '8': if (stdin_ready(50000)) raw_getbyte(); return KEY_END;
+        }
+    } else if (c2 == 'O') {
+        if (!stdin_ready(50000)) return KEY_ESC;
+        int c3 = raw_getbyte();
+        switch (c3) {
+        case 'H': return KEY_HOME;
+        case 'F': return KEY_END;
+        case 'P': return KEY_F1;
+        case 'Q': return KEY_F2;
+        case 'R': return KEY_F3;
+        case 'S': return KEY_F4;
+        }
+    }
+    return KEY_ESC;
+#endif
+}
+
+/* -----------------------------------------------------------------------
+ * getscreensize — query terminal dimensions via TIOCGWINSZ
+ * ----------------------------------------------------------------------- */
+
+static void hb_getscreensize(bios_t *b, int *rows, int *cols)
+{
+    (void)b;
+    *rows = 24; *cols = 80;   /* safe defaults */
+#ifndef _WIN32
+    struct winsize ws;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0) {
+        if (ws.ws_row > 4)  *rows = ws.ws_row;
+        if (ws.ws_col > 20) *cols = ws.ws_col;
+    }
+#else
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    if (GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+        *cols = csbi.srWindow.Right  - csbi.srWindow.Left + 1;
+        *rows = csbi.srWindow.Bottom - csbi.srWindow.Top  + 1;
+    }
+#endif
+}
 
 static void hb_cls(bios_t *b)
 {
@@ -299,6 +486,8 @@ int host_bios_init(host_bios_t *hb, const char **img_paths, int n_drives)
     b->setdate          = hb_setdate;
     b->mapdev           = hb_mapdev;
     b->get_drive_config = hb_get_drive_config;
+    b->getkey           = hb_getkey;
+    b->getscreensize    = hb_getscreensize;
 
     if (n_drives > 16) n_drives = 16;
     hb->num_drives = (uint8_t)n_drives;

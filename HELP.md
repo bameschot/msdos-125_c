@@ -248,6 +248,73 @@ AUTOEXEC BAT        128 06- 1-26  9:00
 
 ---
 
+### EDIT — Edit a Text File
+
+```
+EDIT filename
+```
+
+Opens a full-screen text editor for the named file.  If the file does not
+exist it is created when you save.  The editor requires an interactive
+terminal — it cannot run from a redirected pipe.
+
+**Layout:**
+
+```
+ EDIT: FILENAME.TXT    Ln 1     Col 1     [No changes]   ← status bar
+ ─────────────────────────────────────────────────────
+ file content here …
+ ─────────────────────────────────────────────────────
+ ^S Save  ^Q Quit  ^G Goto  Arrows Move  Home/End …     ← key hints
+```
+
+**Key bindings:**
+
+| Key | Action |
+|-----|--------|
+| Arrow keys | Move cursor one character / line |
+| Home / End | Beginning / end of current line |
+| Ctrl+Home | Start of file |
+| Ctrl+End | End of file |
+| Page Up / Page Down | Scroll one screen |
+| Printable characters | Insert at cursor |
+| Enter | Insert line break |
+| Backspace | Delete character before cursor; join with previous line at column 0 |
+| Delete | Delete character at cursor; join with next line at end of line |
+| Tab | Insert 4 spaces |
+| **Ctrl+W** | **Save file** (Write) |
+| **Ctrl+X** / Esc | **Quit** (prompts to save if modified) |
+| Ctrl+G | Go to line number (prompts) |
+
+**Save prompt** (when quitting with unsaved changes):
+
+```
+ Unsaved changes — save before quit? (Y=save, N=discard, C=cancel)
+```
+
+- **Y** — save and quit
+- **N** — discard changes and quit
+- **C** / Esc — cancel (return to editor)
+
+**Examples:**
+
+```
+EDIT README.TXT         ← edit existing file
+EDIT NEWFILE.TXT        ← create and edit new file
+EDIT B:CONFIG.SYS       ← edit file on drive B:
+```
+
+**Error conditions:**
+
+| Message | Cause |
+|---------|-------|
+| `Required parameter missing` | No filename supplied |
+| `EDIT requires an interactive terminal` | stdin is a pipe or file |
+| `Terminal too small for EDIT (need at least 20x6)` | Terminal window too small |
+| `Cannot read file: NAME` | File found but unreadable |
+
+---
+
 ### ECHO — Display a Message
 
 ```

@@ -273,10 +273,16 @@ static uint8_t do_store(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
     uint16_t clpos;
     uint16_t clus = fat_fndclus(dos, dp, fcb, r.clusnum, &clpos);
 
-    /* Allocate any needed clusters */
-    uint32_t last_clus_needed = r.clusnum
-        + ((r.bytcnt1 + (uint32_t)r.seccnt * dp->secsiz + r.bytcnt2
-            + dp->secsiz - 1) / dp->secsiz + dp->clusmsk) / (dp->clusmsk + 1);
+    /* Allocate any needed clusters.
+     * last_clus_needed = chain position of the cluster holding the last byte,
+     * computed as (last_byte_index / secsiz) >> clusshft, matching the
+     * assembly: DIV secsiz → SHR AX, clusshft. */
+    uint32_t total_write = (uint32_t)count * recsiz;
+    uint32_t last_clus_needed = 0;
+    if (total_write > 0) {
+        uint32_t last_byte_idx = r.bytpos + total_write - 1;
+        last_clus_needed = (last_byte_idx / dp->secsiz) >> dp->clusshft;
+    }
     if (fat12_is_eof(clus)) {
         uint16_t tail = fcb->lstclus;
         uint16_t need = (uint16_t)(last_clus_needed - clpos + 1);

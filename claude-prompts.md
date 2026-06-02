@@ -6,4 +6,7 @@
 5. add a MKFILE command that creates an empty file with a given file name in the current directory
 6. create an open command that opens a file and shows its contents as ascii
 7. add a readme.md that describes the project and attributes the https://github.com/microsoft/ms-dos repo for the original msdos versions
+8. add an EDIT command that allows the user to view and edit and save a text file on disk. change the wrapper to allow for this if required
+9. change the moving the arrows closes the editor, ^Q command does not work on keyboard
+10. what control keys are the commands in the editor supposed to listen to? for example ^Q 
 
