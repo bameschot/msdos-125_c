@@ -834,6 +834,309 @@ static void test_programs(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* HAMURABI.BAS — game-formula unit tests (inline BASIC, no RNG)        */
+/* ------------------------------------------------------------------ */
+
+static void test_hamurabi_mechanics(void)
+{
+    printf("\n--- HAMURABI game mechanics ---\n");
+    const char *o;
+
+    /* Starvation formula: T = INT(G/20), Q = P - T */
+    o = run_prog(
+        "10 P=100\n20 G=1700\n"
+        "30 T=INT(G/20)\n40 IF T>P THEN T=P\n"
+        "50 Q=P-T\n60 PRINT Q\n70 END\n");
+    CHECK(strcmp(o, "15\r\n") == 0,
+          "starvation: Q = P - INT(G/20)  (P=100, G=1700 → Q=15)");
+
+    /* Fully fed: T >= P → Q = 0 */
+    o = run_prog(
+        "10 P=100\n20 G=2000\n"
+        "30 T=INT(G/20)\n40 IF T>P THEN T=P\n"
+        "50 Q=P-T\n60 PRINT Q\n70 END\n");
+    CHECK(strcmp(o, "0\r\n") == 0,
+          "fully fed: P=100, G=2000 → Q=0");
+
+    /* Revolt threshold: Q >= INT(P * 0.45) triggers revolt */
+    o = run_prog(
+        "10 P=100\n20 Q=44\n"
+        "30 IF Q < INT(P*0.45) THEN PRINT \"NO REVOLT\"\n"
+        "40 IF Q >= INT(P*0.45) THEN PRINT \"REVOLT\"\n"
+        "50 END\n");
+    CHECK(strstr(o, "NO REVOLT") != NULL,
+          "no revolt when Q=44 < 45pct of P=100");
+
+    o = run_prog(
+        "10 P=100\n20 Q=46\n"
+        "30 IF Q < INT(P*0.45) THEN PRINT \"NO REVOLT\"\n"
+        "40 IF Q >= INT(P*0.45) THEN PRINT \"REVOLT\"\n"
+        "50 END\n");
+    CHECK(strstr(o, "REVOLT") != NULL,
+          "revolt triggered when Q=46 >= 45pct of P=100");
+
+    /* Exact 45% boundary: INT(100*0.45) = 45 */
+    o = run_prog(
+        "10 P=100\n20 Q=45\n"
+        "30 IF Q < INT(P*0.45) THEN PRINT \"NO REVOLT\"\n"
+        "40 IF Q >= INT(P*0.45) THEN PRINT \"REVOLT\"\n"
+        "50 END\n");
+    CHECK(strstr(o, "REVOLT") != NULL,
+          "revolt triggered at exact threshold Q=45 = INT(100*0.45)");
+
+    /* Immigration formula: C = INT((20*L + S) / (P*100) + 1), capped at 50 */
+    o = run_prog(
+        "10 L=1000\n20 S=2800\n30 P=100\n"
+        "40 C=INT((20*L+S)/(P*100)+1)\n"
+        "50 IF C<0 THEN C=0\n60 IF C>50 THEN C=50\n"
+        "70 PRINT C\n80 END\n");
+    /* (20000+2800)/10000+1 = 2.28+1 = 3.28 → INT=3 */
+    CHECK(strcmp(o, "3\r\n") == 0,
+          "immigration: INT((20*1000+2800)/10000+1) = 3");
+
+    /* Immigration capped at 50 */
+    o = run_prog(
+        "10 C=99\n20 IF C>50 THEN C=50\n30 PRINT C\n40 END\n");
+    CHECK(strcmp(o, "50\r\n") == 0,
+          "immigration cap at 50");
+
+    /* Grain food consumption: S decreases by G */
+    o = run_prog(
+        "10 S=2800\n20 G=2000\n30 S=S-G\n40 PRINT S\n50 END\n");
+    CHECK(strcmp(o, "800\r\n") == 0,
+          "feeding: S = 2800 - 2000 = 800");
+
+    /* Seed cost: planting F acres costs INT(F/2) bushels */
+    o = run_prog(
+        "10 S=1000\n20 F=100\n30 S=S-INT(F/2)\n40 PRINT S\n50 END\n");
+    CHECK(strcmp(o, "950\r\n") == 0,
+          "planting: S = 1000 - INT(100/2) = 950");
+
+    /* Odd acres: INT(101/2) = 50 */
+    o = run_prog(
+        "10 S=1000\n20 F=101\n30 S=S-INT(F/2)\n40 PRINT S\n50 END\n");
+    CHECK(strcmp(o, "950\r\n") == 0,
+          "planting odd acres: S = 1000 - INT(101/2) = 950");
+
+    /* Harvest formula: S += H * F */
+    o = run_prog(
+        "10 S=500\n20 H=5\n30 F=200\n40 S=S+H*F\n50 PRINT S\n60 END\n");
+    CHECK(strcmp(o, "1500\r\n") == 0,
+          "harvest: S = 500 + 5*200 = 1500");
+
+    /* Population update: P = P + C - Q */
+    o = run_prog(
+        "10 P=100\n20 C=5\n30 Q=10\n"
+        "40 P=P+C-Q\n50 IF P<1 THEN P=1\n"
+        "60 PRINT P\n70 END\n");
+    CHECK(strcmp(o, "95\r\n") == 0,
+          "population: P = 100 + 5 - 10 = 95");
+
+    /* Population floor at 1 */
+    o = run_prog(
+        "10 P=5\n20 C=0\n30 Q=10\n"
+        "40 P=P+C-Q\n50 IF P<1 THEN P=1\n"
+        "60 PRINT P\n70 END\n");
+    CHECK(strcmp(o, "1\r\n") == 0,
+          "population floor: P = max(5+0-10, 1) = 1");
+
+    /* Land buying: S = S - A*E, L = L + A */
+    o = run_prog(
+        "10 S=2800\n20 L=1000\n30 A=50\n40 E=20\n"
+        "50 IF A*E <= S THEN 70\n60 PRINT \"CANT\": GOTO 90\n"
+        "70 S=S-A*E\n80 L=L+A\n"
+        "90 PRINT S\n100 PRINT L\n110 END\n");
+    CHECK(strcmp(o, "1800\r\n1050\r\n") == 0,
+          "land buy: S=2800-50*20=1800, L=1000+50=1050");
+
+    /* Land buying rejected when insufficient grain */
+    o = run_prog(
+        "10 S=100\n20 A=50\n30 E=20\n"
+        "40 IF A*E <= S THEN PRINT \"OK\"\n"
+        "50 IF A*E > S THEN PRINT \"CANT\"\n"
+        "60 END\n");
+    CHECK(strstr(o, "CANT") != NULL,
+          "land buy rejected when A*E=1000 > S=100");
+
+    /* Land selling: S = S + T*E, L = L - T */
+    o = run_prog(
+        "10 S=800\n20 L=1000\n30 A=-50\n40 E=20\n"
+        "50 T=-A\n"
+        "60 IF T<=L THEN 80\n70 PRINT \"CANT\": GOTO 100\n"
+        "80 S=S+T*E\n90 L=L-T\n"
+        "100 PRINT S\n110 PRINT L\n120 END\n");
+    CHECK(strcmp(o, "1800\r\n950\r\n") == 0,
+          "land sell: S=800+50*20=1800, L=1000-50=950");
+
+    /* Final rating — mirrors HAMURABI.BAS lines 1050-1160.
+     * Uses IF…THEN linenumber (not inline multi-statement) as the game does. */
+
+    /* Outstanding: D <= 33%, land/person >= 7 */
+    o = run_prog(
+        "10 D=10\n20 P=100\n30 L=1000\n"
+        "40 T=INT(L/P)\n"
+        "50 IF D > INT(P*0.33) THEN 90\n"
+        "60 IF T < 7 THEN 80\n"
+        "70 PRINT \"OUTSTANDING\"\n75 GOTO 100\n"
+        "80 PRINT \"OK\"\n85 GOTO 100\n"
+        "90 PRINT \"POOR\"\n"
+        "100 END\n");
+    CHECK(strstr(o, "OUTSTANDING") != NULL,
+          "final rating outstanding: D=10<=33, land/person=10>=7");
+
+    /* Satisfactory: D <= 33% but land/person < 7 */
+    o = run_prog(
+        "10 D=10\n20 P=100\n30 L=500\n"
+        "40 T=INT(L/P)\n"
+        "50 IF D > INT(P*0.33) THEN 90\n"
+        "60 IF T < 7 THEN 80\n"
+        "70 PRINT \"OUTSTANDING\"\n75 GOTO 100\n"
+        "80 PRINT \"OK\"\n85 GOTO 100\n"
+        "90 PRINT \"POOR\"\n"
+        "100 END\n");
+    CHECK(strstr(o, "OK") != NULL,
+          "final rating satisfactory: D<=33 but land/person=5<7");
+    CHECK(strstr(o, "OUTSTANDING") == NULL,
+          "final rating satisfactory: OUTSTANDING not shown");
+
+    /* Poor: too many deaths */
+    o = run_prog(
+        "10 D=40\n20 P=100\n30 L=1000\n"
+        "40 T=INT(L/P)\n"
+        "50 IF D > INT(P*0.33) THEN 90\n"
+        "60 IF T < 7 THEN 80\n"
+        "70 PRINT \"OUTSTANDING\"\n75 GOTO 100\n"
+        "80 PRINT \"OK\"\n85 GOTO 100\n"
+        "90 PRINT \"POOR\"\n"
+        "100 END\n");
+    CHECK(strstr(o, "POOR") != NULL,
+          "final rating poor: D=40 > INT(100*0.33)=33");
+    CHECK(strstr(o, "OUTSTANDING") == NULL,
+          "final rating poor: OUTSTANDING not shown");
+}
+
+/* ------------------------------------------------------------------ */
+/* HAMURABI.BAS — integration tests loading the real .BAS file          */
+/* ------------------------------------------------------------------ */
+
+/* Read an entire file into a heap buffer (caller must free). */
+static char *read_basic_file(const char *path)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    rewind(f);
+    char *buf = malloc((size_t)size + 1);
+    if (!buf) { fclose(f); return NULL; }
+    size_t n = fread(buf, 1, (size_t)size, f);
+    buf[n] = '\0';
+    fclose(f);
+    return buf;
+}
+
+/* Run HAMURABI.BAS from the real file with the given console input.
+   Returns a pointer to g_out (static buffer). */
+static const char *run_hamurabi(const char *console_input)
+{
+    static char *prog = NULL;
+    if (!prog) {
+        prog = read_basic_file("basic/HAMURABI.BAS");
+        if (!prog) {
+            fprintf(stderr, "SKIP: basic/HAMURABI.BAS not found\n");
+            return "";
+        }
+    }
+    return run_prog_input(prog, console_input);
+}
+
+static void test_hamurabi_file(void)
+{
+    printf("\n--- HAMURABI.BAS integration ---\n");
+    const char *o;
+
+    /* ---- intro text ---- */
+    /* Feed 0 on year 1 → revolt, game terminates quickly */
+    o = run_hamurabi("0\r0\r0\r");
+    CHECK(strstr(o, "HAMURABI") != NULL,
+          "HAMURABI.BAS: title appears");
+    CHECK(strstr(o, "SUMERIA") != NULL,
+          "HAMURABI.BAS: Sumeria reference appears");
+    CHECK(strstr(o, "YEAR 1 OF 10") != NULL,
+          "HAMURABI.BAS: year 1 header appears");
+    CHECK(strstr(o, "UNDEFINED") == NULL,
+          "HAMURABI.BAS: no UNDEFINED LINE error on revolt path");
+    CHECK(strstr(o, "GAME OVER") != NULL,
+          "HAMURABI.BAS: GAME OVER appears on revolt path");
+
+    /* ---- revolt path ---- */
+    /* G=0 → T=0, Q=P → Q >= 45%P → revolt always fires */
+    o = run_hamurabi("0\r0\r0\r");
+    CHECK(strstr(o, "PEOPLE HAVE STARVED") != NULL,
+          "HAMURABI.BAS: starvation message when fed 0");
+    CHECK(strstr(o, "CITIZENS REVOLT") != NULL,
+          "HAMURABI.BAS: revolt message when all starve");
+    CHECK(strstr(o, "THRONE") != NULL,
+          "HAMURABI.BAS: driven from throne message");
+
+    /* ---- no starvation year 1 ---- */
+    /* P starts at 105 after immigration, feed 2100 → T=105 → Q=0 */
+    /* After year 1 we deliberately revolt on year 2 (G=0) */
+    o = run_hamurabi("0\r2100\r0\r0\r0\r0\r");
+    CHECK(strstr(o, "NO ONE STARVED LAST YEAR") != NULL,
+          "HAMURABI.BAS: 'no starvation' message when fully fed year 1");
+    CHECK(strstr(o, "YEAR 2 OF 10") != NULL,
+          "HAMURABI.BAS: game advances to year 2 when no revolt year 1");
+    CHECK(strstr(o, "UNDEFINED") == NULL,
+          "HAMURABI.BAS: no UNDEFINED LINE error on no-starvation path");
+
+    /* ---- initial state shown in year 1 summary ---- */
+    o = run_hamurabi("0\r0\r0\r");
+    CHECK(strstr(o, "1000") != NULL,
+          "HAMURABI.BAS: initial land 1000 acres shown");
+    CHECK(strstr(o, "2800") != NULL,
+          "HAMURABI.BAS: initial grain 2800 bushels shown");
+
+    /* ---- land trading input validation ---- */
+    /* Attempt to buy more land than we can afford: the game should
+       re-prompt (print error).  We ask for 500 acres at ~20 bush/acre
+       = 10000 but only have 2800.  Input: buy=500, then buy=0, food=0,
+       plant=0 → revolt.  The error message must appear. */
+    o = run_hamurabi("500\r0\r0\r0\r");
+    CHECK(strstr(o, "ONLY HAVE") != NULL,
+          "HAMURABI.BAS: 'only have' error when buying unaffordable land");
+
+    /* Attempt to sell more land than owned (start with 1000 acres,
+       sell -2000): error message should appear. */
+    o = run_hamurabi("-2000\r0\r0\r0\r");
+    CHECK(strstr(o, "ONLY HAVE") != NULL,
+          "HAMURABI.BAS: 'only have' error when selling more land than owned");
+
+    /* ---- game structure: no missing line numbers ---- */
+    /* Run several game paths and verify no UNDEFINED LINE appears */
+    /* Path 1: starve everyone year 1 */
+    o = run_hamurabi("0\r0\r0\r");
+    CHECK(strstr(o, "UNDEFINED") == NULL,
+          "HAMURABI.BAS: path 1 (revolt year 1) — no undefined lines");
+
+    /* Path 2: survive year 1, revolt year 2 */
+    o = run_hamurabi("0\r2100\r0\r0\r0\r0\r");
+    CHECK(strstr(o, "UNDEFINED") == NULL,
+          "HAMURABI.BAS: path 2 (revolt year 2) — no undefined lines");
+
+    /* Path 3: buy land year 1 (affordable), then revolt */
+    /* Buy 10 acres at ~20 bush/acre = 200, well within 2800 */
+    o = run_hamurabi("10\r0\r0\r");
+    CHECK(strstr(o, "UNDEFINED") == NULL,
+          "HAMURABI.BAS: path 3 (land buy, then revolt) — no undefined lines");
+
+    /* Path 4: sell land year 1, then revolt */
+    o = run_hamurabi("-100\r0\r0\r");
+    CHECK(strstr(o, "UNDEFINED") == NULL,
+          "HAMURABI.BAS: path 4 (land sell, then revolt) — no undefined lines");
+}
+
+/* ------------------------------------------------------------------ */
 /* main                                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -856,6 +1159,8 @@ int main(void)
     test_misc();
     test_input();
     test_programs();
+    test_hamurabi_mechanics();
+    test_hamurabi_file();
 
     printf("\n=== Results: %d passed, %d failed ===\n", g_pass, g_fail);
     return g_fail > 0 ? 1 : 0;
