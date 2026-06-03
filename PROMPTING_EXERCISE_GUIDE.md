@@ -263,59 +263,7 @@ in a kernel function later, the abstraction rule was not applied.
 
 ---
 
-## Exercise 3 — Port the Kernel
-
-### Prompting objective
-Scope a large porting task into layers you can test one at a time.
-
-### Background
-The kernel manages the FAT12 filesystem and exposes a system call interface to
-the shell.  It knows nothing about the terminal or the host — all hardware access
-goes through the vtable from Exercise 2.  Inside it is layered: FAT arithmetic
-at the bottom, disk buffering, file control, and the system call dispatcher at
-the top.  Porting bottom-up means each layer is tested before anything builds on it.
-
-### Task
-Port `MSDOS.ASM` to C.
-
-### Starting prompt
-
-> "Port the operating system kernel in `MSDOS.ASM` to C.  Use the reference
-> document below as the translation guide."
-
-### Hints
-"Port the kernel" is a large task.  Two additions keep it manageable:
-
-- Ask Claude to **start with the lowest layer**: "begin with the FAT12 arithmetic
-  functions — they have no dependencies and can be tested in isolation."
-- Ask for **tests before moving up**: "write unit tests for each layer before
-  starting the next one."
-
-This creates a bottom-up rhythm: FAT arithmetic → disk buffering → file operations
-→ the system call dispatcher.  Run the tests at each layer before moving on.
-
-After each layer, use the review prompt before running it:
-
-> "Review the layer you just wrote.  What are the most likely correctness
-> problems?"
-
-When the kernel is complete, ask Claude to update `CLAUDE.md` with the file
-layout, the vtable rule, and a brief description of each kernel layer.
-
-### Quality bar
-Each layer's tests should pass before the next layer starts.  No kernel file
-should call `printf`, `fread`, or any other I/O function from the C standard
-library — all I/O goes through the vtable.
-
-### Iteration cues
-- If a test fails, describe what you observed: "The test expected [X] but got [Y].
-  What could cause that?"
-- If Claude produces a function that calls `printf` directly, quote the rule from
-  the reference document and ask it to revise.
-
----
-
-## Exercise 4 — Write the Host Wrapper
+## Exercise 3 — Write the Host Wrapper
 
 ### Prompting objective
 Describe a component by what it must do, not how to implement it.
@@ -327,6 +275,9 @@ writes — and contains `main()`, which opens the disk image, runs the shell, an
 flushes everything on exit.  The disk image is a raw binary file in standard
 FAT12 format: a boot sector with geometry info, two FAT copies, a root directory,
 and data sectors, exactly as a real floppy disk would be laid out.
+
+Building the wrapper first means the kernel can be ported and tested against a
+real running system from the start, rather than in isolation.
 
 ### Task
 Write the POSIX layer that makes the kernel run on a modern system — terminal
@@ -366,6 +317,59 @@ Running `./msdos disk.img` should reach a prompt.  Test this before moving on.
   launch and the first prompt appearing?  Where might it be stopping early?"
 - If the disk image is rejected on load, ask: "What does the program check in the
   disk image when it opens it?"
+
+---
+
+## Exercise 4 — Port the Kernel
+
+### Prompting objective
+Scope a large porting task into layers you can test one at a time.
+
+### Background
+The kernel manages the FAT12 filesystem and exposes a system call interface to
+the shell.  It knows nothing about the terminal or the host — all hardware access
+goes through the vtable defined in Exercise 2 and implemented in Exercise 3.
+Inside it is layered: FAT arithmetic at the bottom, disk buffering, file control,
+and the system call dispatcher at the top.  Porting bottom-up means each layer is
+tested before anything builds on it.
+
+### Task
+Port `MSDOS.ASM` to C.
+
+### Starting prompt
+
+> "Port the operating system kernel in `MSDOS.ASM` to C.  Use the reference
+> document below as the translation guide."
+
+### Hints
+"Port the kernel" is a large task.  Two additions keep it manageable:
+
+- Ask Claude to **start with the lowest layer**: "begin with the FAT12 arithmetic
+  functions — they have no dependencies and can be tested in isolation."
+- Ask for **tests before moving up**: "write unit tests for each layer before
+  starting the next one."
+
+This creates a bottom-up rhythm: FAT arithmetic → disk buffering → file operations
+→ the system call dispatcher.  Run the tests at each layer before moving on.
+
+After each layer, use the review prompt before running it:
+
+> "Review the layer you just wrote.  What are the most likely correctness
+> problems?"
+
+When the kernel is complete, ask Claude to update `CLAUDE.md` with the file
+layout, the vtable rule, and a brief description of each kernel layer.
+
+### Quality bar
+Each layer's tests should pass before the next layer starts.  No kernel file
+should call `printf`, `fread`, or any other I/O function from the C standard
+library directly.
+
+### Iteration cues
+- If a test fails, describe what you observed: "The test expected [X] but got [Y].
+  What could cause that?"
+- If Claude produces a function that calls `printf` directly, quote the rule from
+  the reference document and ask it to revise.
 
 ---
 
