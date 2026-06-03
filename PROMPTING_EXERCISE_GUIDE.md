@@ -660,14 +660,3 @@ fail if you deliberately break the thing it tests.
 
 ---
 
-## Reference
-
-| File | What it shows |
-|------|--------------|
-| `claude-prompts.md` | The original one-line prompts — short because context had built up; this guide builds that context deliberately |
-| `v1.25/CLAUDE.md` | An example of the Exercise 1 output |
-| `v1.25/8086_to_c_reference.md` | An example of the Exercise 2 reference document |
-| `CLAUDE.md` | Your living architecture document — keep it current |
-| `README.md` | Your living user-facing document — keep it current |
-| `src/` | The finished port — a fallback if you get stuck |
-| `tests/` | Concrete examples of the isolation strategies from Exercise 10 |
