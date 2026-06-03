@@ -68,6 +68,18 @@ Read `claude-prompts.md` once.  Those prompts are intentionally terse — they
 worked because of accumulated context built up across a long session.  This
 guide teaches you to get reliable results from a standing start.
 
+### Start with a git repository
+
+Before writing any code, run `git init` in your project folder and make an
+initial commit.  This gives you a safety net for every exercise: if a prompt
+produces a result that breaks something that was working, you can see exactly
+what changed (in VS Code's Source Control panel or with `git diff`) and revert
+to the last good state with a single command.
+
+Get into the habit of committing after each exercise completes and its tests
+pass.  A commit history also gives Claude useful context — you can ask "what
+changed since the last commit?" to orient a new session quickly.
+
 ### Ground rules
 
 1. **You direct; Claude executes.** You do not need to read or understand the
@@ -86,6 +98,9 @@ guide teaches you to get reliable results from a standing start.
 5. **Keep a living README and CLAUDE.md.** After each exercise, ask Claude to
    update both files to reflect what has been built.  See *Living Documentation*
    below.
+
+6. **Commit when tests pass.** A passing commit is a safe rollback point.  If
+   the next prompt breaks something, `git checkout .` gets you back instantly.
 
 ---
 
