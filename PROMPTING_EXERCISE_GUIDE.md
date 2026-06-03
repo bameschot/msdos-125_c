@@ -1,0 +1,548 @@
+# Prompting Exercise Guide: Porting MS-DOS 1.25 with Claude
+
+A hands-on course in **using Claude to work with an unfamiliar codebase** —
+specifically, porting MS-DOS 1.25 from 8086 assembly to C.
+
+The assembly in `v1.25/source/` is roughly 12 000 lines of 1982-era code in a
+language most developers have never written.  That is the point.  You are not
+expected to learn 8086 assembly.  The exercises here are about developing the
+prompting habits that let you use Claude productively on *any* codebase you do
+not fully understand.
+
+Each exercise has:
+- a **prompting objective** — the communication skill being practised
+- a **task** — what you are trying to accomplish
+- a **starting prompt** — a short, natural prompt you could type right now
+- **hints** — small additions that steer toward a more reliable result
+- a **quality bar** — what a useful response looks like
+- **iteration cues** — signals that you need a follow-up prompt
+
+Work through these in order.  Each exercise's output becomes input to the next.
+
+---
+
+## Before You Start
+
+### What is in the repository
+
+```
+v1.25/source/      8086 assembly — the original MS-DOS 1.25
+src/               C port — the finished result you are working toward
+tests/             Test suite for the port
+claude-prompts.md  The one-line prompts used to build this project
+```
+
+Keep `src/` as a fallback if you get completely stuck, not as a starting point.
+
+Read `claude-prompts.md` once.  Those prompts are intentionally terse — they
+worked because of accumulated context built up across a long session.  This
+guide teaches you to get reliable results from a standing start.
+
+### Ground rules
+
+1. **You direct; Claude executes.** You do not need to read or understand the
+   source code — Claude will.  Your job is to give it the right goal, the right
+   constraints, and to test and observe the result.
+
+2. **Test after every prompt.** Build and run the output.  What you observe is
+   your main source of follow-up questions — not the code itself.
+
+3. **One concern per prompt.** Mixing two tasks in one message produces output
+   that is hard to test and harder to fix.
+
+4. **Use a review prompt when output is large.** Before accepting a substantial
+   result, ask Claude to review it.  See *The Review Prompt* section below.
+
+---
+
+## The Review Prompt
+
+When Claude produces a large result — a new module, a complex command, a test
+suite — do not just compile it and hope for the best.  Ask Claude to review its
+own output before you run it:
+
+> "Review what you just wrote.  What are the most likely problems or edge cases
+> you may have missed?"
+
+This works because Claude can reason about its output more critically when asked
+directly.  A good review response will surface at least one real issue — handle
+it before moving on.
+
+You can also use a targeted review when something feels off after testing:
+
+> "I ran it and observed [X].  Review the relevant part of the code and explain
+> why it might behave that way."
+
+The review prompt is not a substitute for running the code — it is a complement.
+Use it after every exercise that produces non-trivial output.
+
+---
+
+## Exercise 1 — Get a Map of the Codebase
+
+### Prompting objective
+Ask Claude to turn an unfamiliar source tree into something you can navigate.
+
+### Task
+Understand what the source files in `v1.25/source/` do and how they relate.
+
+### Starting prompt
+
+> "Analyse and describe the contents of the `v1.25/source/` folder."
+
+### Hints
+That prompt works but tends to produce a long prose description.  Two small
+additions make the output more useful:
+
+- Ask for a **specific format**: "describe it as a table — one row per file,
+  showing its responsibility, what it provides, and what it depends on."
+- Ask for a **dependency diagram**: "add a short diagram showing which files
+  call into which."
+
+### Quality bar
+The output should name specific roles ("FAT12 cluster allocation", "keyboard and
+screen I/O") not vague ones ("handles files").  If a description feels generic,
+follow up: "What does this file do that no other file does?"
+
+### Iteration cues
+- If two files seem to overlap, ask: "What is the boundary between [A] and [B]?"
+- Keep this table — you will refer back to it throughout the project.
+
+---
+
+## Exercise 2 — Build a Translation Reference
+
+### Prompting objective
+Generate a reusable document before a large task so Claude applies consistent
+choices throughout, rather than reinventing them in each function.
+
+### Task
+Create a reference that maps 8086 assembly patterns to C equivalents.
+
+### Starting prompt
+
+> "Create a reference document of 8086 assembly that can later be used to port
+> this project to C code."
+
+### Hints
+The starting prompt gets you a general reference.  Add one constraint to make it
+useful specifically for this port:
+
+- "The kernel must never call any C standard library I/O function directly.
+  All console and disk access goes through a struct of function pointers."
+
+This single rule prevents a class of design errors that are painful to fix later.
+Ask Claude to include it explicitly in the document so you can paste it into
+future prompts as a reminder.
+
+After getting the document, use the review prompt:
+
+> "Review this reference document.  Is there anything important for porting an
+> OS kernel to C that is missing?"
+
+### Quality bar
+The hardware abstraction section should define a C struct with function pointers,
+not concrete function implementations.  If you see `printf` or `fread` anywhere
+in a kernel function later, the abstraction rule was not applied.
+
+### Iteration cues
+- Save this document and paste it at the top of every subsequent porting prompt.
+- If Claude makes inconsistent choices later, point back to the reference:
+  "The reference says [X].  Revise to match it."
+
+---
+
+## Exercise 3 — Port the Kernel
+
+### Prompting objective
+Scope a large porting task into layers you can test one at a time.
+
+### Task
+Port `MSDOS.ASM` to C.
+
+### Starting prompt
+
+> "Port the operating system kernel in `MSDOS.ASM` to C.  Use the reference
+> document below as the translation guide."
+
+### Hints
+"Port the kernel" is a large task.  Two additions keep it manageable:
+
+- Ask Claude to **start with the lowest layer**: "begin with the FAT12 arithmetic
+  functions — they have no dependencies and can be tested in isolation."
+- Ask for **tests before moving up**: "write unit tests for each layer before
+  starting the next one."
+
+This creates a bottom-up rhythm: FAT arithmetic → disk buffering → file operations
+→ the system call dispatcher.  Run the tests at each layer before moving on.
+
+After each layer, use the review prompt before running it:
+
+> "Review the layer you just wrote.  What are the most likely correctness
+> problems?"
+
+### Quality bar
+Each layer's tests should pass before the next layer starts.  No kernel file
+should call `printf`, `fread`, or any other I/O function from the C standard
+library — all I/O goes through the vtable.
+
+### Iteration cues
+- If a test fails, describe what you observed: "The test expected [X] but got [Y].
+  What could cause that?"
+- If Claude produces a function that calls `printf` directly, quote the rule from
+  the reference document and ask it to revise.
+
+---
+
+## Exercise 4 — Write the Host Wrapper
+
+### Prompting objective
+Describe a component by what it must do, not how to implement it.
+
+### Task
+Write the POSIX layer that makes the kernel run on a modern system — terminal
+input/output and disk image files — plus the program entry point.
+
+### Starting prompt
+
+> "Write a wrapper CLI application in C.  It should handle keyboard input and
+> screen output, and support disk reads and writes to a disk image file that is
+> loaded on start and saved on exit."
+
+### Hints
+One addition avoids a common pitfall with the editor you will add later:
+
+- "Use raw terminal mode for keyboard input so the program receives every
+  keypress directly, including control keys."
+
+Without this, arrow keys and control characters will not work in the editor.
+
+If you do not yet have a disk image to test with, add:
+
+- "Also add a `--format` flag that creates a blank FAT12 disk image."
+
+### Quality bar
+Running `./msdos disk.img` should reach a prompt.  Test this before moving on.
+
+### Iteration cues
+- If the program exits immediately, ask: "What should happen step by step between
+  launch and the first prompt appearing?  Where might it be stopping early?"
+- If the disk image is rejected on load, ask: "What does the program check in the
+  disk image when it opens it?"
+
+---
+
+## Exercise 5 — Build the Command Processor
+
+### Prompting objective
+Describe behaviour precisely so Claude does not have to guess what the user sees.
+
+### Task
+Port `COMMAND.ASM` to produce an interactive shell with file commands.
+
+### Starting prompt
+
+> "Port the command processor in `COMMAND.ASM` to C.  It should show a prompt,
+> read a command, and dispatch to the right handler."
+
+### Hints
+Porting `COMMAND.ASM` will bring the original command set with it: `DIR`,
+`TYPE`, `COPY`, `DEL`, `ERASE`, `REN`, `RENAME`, `DATE`, `TIME`, `PAUSE`, and
+`REM`.  The follow-up work is verification, not addition.  Test each command and
+describe what you observe if something is off:
+
+- Try `DIR` on an empty disk and on a disk with files.
+- Try `DEL *.*` and confirm it asks for confirmation before deleting everything.
+
+If a command is missing or behaves unexpectedly, describe the gap: "DIR is
+present but does not show free bytes at the end.  Can you add that?"  Ask for
+one fix at a time rather than listing everything at once.
+
+Commands that were *not* in the original — `ECHO`, `VER`, `CLS`, and `CHKDSK`
+— will need to be asked for separately.  A single follow-up prompt is enough:
+"Add ECHO, VER, CLS, and CHKDSK commands."  `HELP` is covered as its own
+exercise next.
+
+### Quality bar
+`DIR` on an empty disk should show zero files and a correct free-space number.
+`COPY` followed by `DIR` should show the new file with the right size.
+
+### Iteration cues
+- If a command produces wrong output: "I ran [command] and got [output].  I
+  expected [X].  What would cause that difference?"
+- If a command crashes: "Running [command] with no argument causes a crash.
+  What should it do instead?"
+
+---
+
+## Exercise 6 — Add a New Command: HELP
+
+### Prompting objective
+Write a minimal prompt for a well-scoped addition — just enough to be unambiguous.
+
+### Task
+Add a `HELP` command that lists all available commands with a short description
+of each.
+
+### Starting prompt
+
+> "Add a HELP command with all commands supported in this DOS version."
+
+### Hints
+That is enough to get a working result.  One thing worth checking after: does
+typing `HELP` alone list all commands, and does `HELP DIR` (or similar) show
+detail for a single command?  If only one of those works, describe what you
+observed and ask for the other form.
+
+This exercise also introduces a useful pattern for any future renaming or
+reorganisation: before making a change that touches a name in multiple places,
+ask "list every place [name] appears in the codebase" first, then ask for the
+change in a second prompt.
+
+### Quality bar
+`HELP` should list every command the shell supports.  If a command you added
+earlier is missing from the output, point it out: "HELP does not list [command].
+Can you add it?"
+
+### Iteration cues
+- If the HELP output is very long and hard to read, ask: "Can the output be
+  formatted into two columns?"
+- If Claude changes more than expected, ask: "Was that change needed for HELP,
+  or is it a separate concern?"
+
+---
+
+## Exercise 7 — Add a Complex Command: Full-Screen Editor
+
+### Prompting objective
+Ask about constraints before asking for code when a feature has non-obvious
+failure modes.
+
+### Task
+Add an `EDIT` command — a full-screen text editor backed by the FAT12 disk.
+
+### Starting prompt
+
+> "Add an EDIT command that lets the user view, edit, and save a text file on
+> disk."
+
+### Hints
+A terminal editor has failure modes that only appear at runtime.  Ask one
+question before any code is written:
+
+> "Before writing any code: what are the most common ways a terminal editor
+> breaks on a POSIX system that I should design around from the start?"
+
+Take the answer seriously.  Then when asking for the implementation, add:
+
+- "Use key bindings that the terminal will not intercept."
+
+This one phrase steers Claude toward safe choices and away from control characters
+that terminals silently consume.
+
+After receiving the implementation, use the review prompt:
+
+> "Review the editor implementation.  What are the most likely problems with key
+> handling or file save/load that I should test first?"
+
+Then test in that order.
+
+### Quality bar
+Test by opening a file, making a change, saving, and reopening — the change
+should be there.  Arrow keys, Home, End, and Escape should all behave correctly.
+
+### Iteration cues
+- If keys do nothing: "I pressed the up arrow and nothing happened.  What should
+  the editor do when it receives that key?"
+- If a file loads with an unexpected blank line at the end: "Opening a file that
+  ends with a newline shows an extra blank line.  What causes that?"
+- If the saved file looks wrong: "After saving, the file has [X] bytes but I
+  expected [Y].  What determines the file size that gets written?"
+
+---
+
+## Exercise 8 — Add a Complex Command: BASIC Interpreter
+
+### Prompting objective
+Break a large feature into a sequence of prompts, each small enough to test
+before the next one starts.
+
+### Task
+Add a `BASIC` command that loads and runs a line-numbered BASIC program stored
+as a text file on the FAT12 disk.  The interpreter should support variables,
+arithmetic, control flow, and basic I/O — enough to run simple programs.
+
+### Starting prompt
+
+> "Add a rudimentary BASIC interpreter where the command BASIC can be used to
+> run a given file."
+
+### Hints
+An interpreter is too large to produce and verify in one go.  Ask for it in
+four steps, testing after each one before moving to the next:
+
+1. "Start with loading and listing the program only — no execution yet."
+2. "Add execution: PRINT, LET, GOTO, and END."
+3. "Add IF/THEN, FOR/NEXT, GOSUB, and RETURN."
+4. "Add INPUT and built-in functions: INT, RND, LEN, CHR$, STR$, LEFT$, RIGHT$,
+   MID$."
+
+After step 2, write and run this program to verify before continuing:
+
+```
+10 PRINT "hello"
+20 GOTO 40
+30 PRINT "skipped"
+40 END
+```
+
+After step 3, verify a FOR loop counts correctly.  After step 4, run the number
+guessing game from the README.
+
+Use the review prompt after step 3:
+
+> "Review the control flow implementation.  What are the most likely problems
+> with FOR/NEXT or GOSUB that I should test?"
+
+### Quality bar
+The number guessing game from the README should run to completion with no
+incorrect jumps or loop counts.
+
+### Iteration cues
+- If the program stops early or jumps to the wrong line: "I ran [program] and it
+  went to line [X] instead of [Y].  What should GOTO/IF/FOR do in this case?"
+- If a loop runs the wrong number of times: "FOR I = 1 TO 3 runs [N] times.
+  How many times should it run, and what decides when it stops?"
+- If a built-in function gives a wrong result: "I called [function] with [input]
+  and got [output].  I expected [expected]."
+
+---
+
+## Exercise 9 — Add Subdirectory Support
+
+### Prompting objective
+Ask Claude to find the minimal change before making one that touches everything.
+
+### Task
+Add `MKDIR`, `RMDIR`, and `CD` so the shell supports a full directory tree, with
+all existing file commands continuing to work without modification.
+
+### Starting prompt
+
+> "Add MKDIR, RMDIR, and CD commands to create, delete, and navigate folders."
+
+### Hints
+Before asking for the implementation, ask one design question:
+
+> "What is the minimal change needed so that all existing file commands work in
+> subdirectories automatically, without modifying each one individually?"
+
+A good answer changes one place in the disk layer rather than every command.
+If Claude proposes modifying DIR, TYPE, COPY individually, push back: "Is there
+a way to make the directory layer aware of the current directory instead?"
+
+Once you have the design confirmed, ask for the implementation:
+
+> "Implement it.  The shell prompt should show the current path."
+
+### Quality bar
+Run through this sequence manually: create a directory, enter it, create a file,
+go back up, try to remove the directory (should fail — not empty), delete the
+file, remove the directory (should succeed).
+
+### Iteration cues
+- If the prompt shows the wrong path after `CD ..`: "After CD .. the prompt shows
+  [X].  What should it show?"
+- If file commands stop working after CD: "DIR shows no files after I change
+  directory.  Is the new directory being searched, or is it still looking at the
+  previous one?"
+
+---
+
+## Exercise 10 — Commission a Test Suite
+
+### Prompting objective
+Ask for tests that reveal bugs, not just tests that confirm things work.
+
+### Task
+Write tests for the FAT12 layer, the command processor, the editor, and the
+BASIC interpreter.
+
+### Starting prompt
+
+> "Review the [component] code and write a set of test cases to validate that
+> it is functionally correct."
+
+### Hints
+"Write tests" tends to produce tests that only confirm the happy path.  Add:
+
+- "Focus on edge cases and error conditions rather than the normal case."
+
+For the command processor, ask about isolation before the tests:
+
+> "The tests should not touch any real file on the host machine.  What is the
+> simplest way to run them against a fake disk in memory?"
+
+After getting the test suite, use the review prompt:
+
+> "Review the tests you just wrote.  Which ones would still pass even if the
+> function being tested was broken?"
+
+Anything that passes with a broken implementation is not testing anything useful —
+ask Claude to replace it.
+
+### Quality bar
+Build and run with `-fsanitize=address,undefined`.  Every test that passes should
+fail if you deliberately break the thing it tests.
+
+### Iteration cues
+- If there are fewer than five tests per component, ask: "What error conditions
+  can this code encounter?  Add one test for each."
+- If a sanitizer error appears, paste the full output and ask: "What does this
+  sanitizer error mean, and what is the fix?"
+
+---
+
+## The Session Pattern
+
+```
+1. Context first    Paste the translation reference from Exercise 2.
+2. One thing        One task or question per prompt.
+3. Constraints      State what must not happen — Claude will respect them.
+4. Review           Use the review prompt before running large results.
+5. Test             Run the code and observe; describe what you see.
+6. Iterate          Describe the observed symptom; ask for the cause.
+```
+
+### When to change approach
+
+| What you observe | What to do |
+|---|---|
+| Claude changes things you did not ask about | "Why did you change [X]? Is that needed for [Y]?" |
+| Same problem after two fix attempts | "Explain what the code is supposed to do here, step by step" |
+| Output is too large to know where to start | Use the review prompt first, then test the areas it flags |
+| Unsure whether the result is correct | "What would a test that catches a bug here look like?" |
+
+---
+
+## Prompts to Avoid
+
+| Avoid | Because | Use instead |
+|---|---|---|
+| Asking for everything at once | Too large to test meaningfully | One layer or feature at a time |
+| "Fix this" with no observation | Claude guesses at the cause | Describe what you ran and what you saw |
+| "Write tests for X" alone | Produces happy-path tests only | Add "focus on edge cases and error conditions" |
+| Two unrelated tasks in one prompt | Hard to test separately | One topic per prompt |
+| Accepting output without reviewing | Misses predictable problems | Use the review prompt on any large result |
+
+---
+
+## Reference
+
+| File | What it shows |
+|------|--------------|
+| `claude-prompts.md` | The original one-line prompts — short because context had built up; this guide builds that context deliberately |
+| `v1.25/CLAUDE.md` | An example of the Exercise 1 output |
+| `v1.25/8086_to_c_reference.md` | An example of the Exercise 2 reference document |
+| `src/` | The finished port — a fallback if you get stuck |
+| `tests/` | Concrete examples of the isolation strategies from Exercise 10 |
