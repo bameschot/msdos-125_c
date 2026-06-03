@@ -116,6 +116,16 @@ changed since the last commit?" to orient a new session quickly.
 6. **Commit when tests pass.** A passing commit is a safe rollback point.  If
    the next prompt breaks something, `git checkout .` gets you back instantly.
 
+7. **Match the model to the task.** Not every prompt needs the most powerful
+   model.  A rough guide:
+   - **Opus / high effort** — analysis, documentation, architecture decisions,
+     the translation reference, and any prompt where the answer will be reused
+     many times.  Worth the extra cost when the output shapes everything that
+     follows.
+   - **Sonnet / medium effort** — implementation, adding commands, writing tests,
+     fixing bugs.  Fast enough to iterate quickly and capable enough for the
+     work.  Use this for the majority of prompts.
+
 ---
 
 ## The Review Prompt
@@ -152,6 +162,14 @@ and Claude immediately knows the current state of the project.
 After each exercise, ask:
 
 > "Update README.md and CLAUDE.md to reflect what was just added."
+
+Then run `/compact` before starting the next exercise.  Each exercise generates
+a lot of back-and-forth — code, test output, fixes, reviews — and the context
+window fills up quickly.  `/compact` summarises the conversation so far and
+discards the detail, keeping only what matters for the next step.  With
+up-to-date `CLAUDE.md` and `README.md` files already committed, almost nothing
+important is lost: Claude can read those files to reconstruct the project state
+at any point.
 
 `README.md` should describe the project for a user: what it does, how to build
 it, and which commands are available.  `CLAUDE.md` should describe the project
