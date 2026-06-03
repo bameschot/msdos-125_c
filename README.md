@@ -33,6 +33,8 @@ The port targets **C11** and has no dependencies beyond the standard C library a
 
 ```sh
 make          # produces ./msdos
+make demo     # builds demo.img — a 720 KB disk pre-loaded with BASIC programs
+make test     # runs all 461 unit and integration tests
 make clean
 ```
 
@@ -70,6 +72,45 @@ A>
 ```sh
 ./msdos drive_a.img drive_b.img   # A: and B:
 ```
+
+---
+
+## Demo Disk
+
+A ready-to-boot 720 KB disk image pre-loaded with BASIC programs and documentation is included.  Build it with:
+
+```sh
+make demo          # creates demo.img  (requires ./msdos — run make first)
+./msdos demo.img   # boot into it
+```
+
+Once inside, start with:
+
+```
+A>TYPE README.TXT      read the quick-start guide
+A>TYPE OS.TXT          full OS command reference
+A>TYPE BASIC.TXT       BASIC interpreter language guide
+A>DIR                  list everything on the disk
+```
+
+### BASIC programs on the demo disk
+
+| File | Description |
+|------|-------------|
+| `FIB.BAS` | Fibonacci sequence |
+| `GUESS.BAS` | Number guessing game |
+| `CALC.BAS` | 4-function calculator with memory |
+| `TIMES.BAS` | Multiplication tables |
+| `HAMURABI.BAS` | Govern ancient Sumeria — classic 1973 strategy game |
+| `PRIMES.BAS` | List all prime numbers up to a given limit |
+| `CONVERT.BAS` | Unit converter (temperature, length, weight) |
+| `LOAN.BAS` | Monthly loan payment calculator |
+| `STATS.BAS` | Descriptive statistics: count, mean, min, max, range, std dev |
+| `QUIZ.BAS` | Mental arithmetic quiz — addition, subtraction, multiplication, division |
+
+Run any program with `BASIC filename.BAS`, edit one with `EDIT filename.BAS`.
+
+The disk image is produced by [`basic/make_disk.py`](basic/make_disk.py), which formats a blank image via the `msdos` binary and then writes all files by patching the raw FAT12 bytes directly from Python.
 
 ---
 

@@ -88,6 +88,13 @@ int disk_fatread(dos_t *dos)
     if (dos->bios->disk_change)
         changed = dos->bios->disk_change(dos->bios, dp->drvnum);
 
+    /* Force an initial FAT read when the buffer is clearly empty.
+     * A valid FAT12 media byte is always >= 0xF0; zero means the buffer
+     * has never been populated (e.g. BIOS disk_change returned 0 on the
+     * very first access, skipping the read). */
+    if (changed == 0 && dp->fat[0] == 0)
+        changed = 1;
+
     if (changed != 0) {
         /* Flush the directory buffer before discarding its address.
          * dirbufid encodes (devnum<<24)|absolute_sector; if we reset it

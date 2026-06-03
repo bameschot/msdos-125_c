@@ -202,7 +202,10 @@ static uint8_t do_load(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
         sic++;
         if (sic > dp->clusmsk) {
             uint16_t next = fat_unpack(dp->fat, clus);
-            if (!fat12_is_eof(next)) { clus = next; fcb->lstclus = clus; }
+            if (!fat12_is_eof(next)) {
+                clus = next; clpos++;
+                fcb->lstclus = clus; fcb->cluspos = clpos;
+            }
             sic = 0;
         }
     }
@@ -216,7 +219,10 @@ static uint8_t do_load(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
         sic++;
         if (sic > dp->clusmsk) {
             uint16_t next = fat_unpack(dp->fat, clus);
-            if (!fat12_is_eof(next)) { clus = next; fcb->lstclus = clus; }
+            if (!fat12_is_eof(next)) {
+                clus = next; clpos++;
+                fcb->lstclus = clus; fcb->cluspos = clpos;
+            }
             sic = 0;
         }
     }
@@ -313,7 +319,10 @@ static uint8_t do_store(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
         sic++;
         if (sic > dp->clusmsk) {
             uint16_t next = fat_unpack(dp->fat, clus);
-            if (!fat12_is_eof(next)) { clus = next; fcb->lstclus = clus; }
+            if (!fat12_is_eof(next)) {
+                clus = next; clpos++;
+                fcb->lstclus = clus; fcb->cluspos = clpos;
+            }
             sic = 0;
         }
     }
@@ -327,7 +336,10 @@ static uint8_t do_store(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
         sic++;
         if (sic > dp->clusmsk) {
             uint16_t next = fat_unpack(dp->fat, clus);
-            if (!fat12_is_eof(next)) { clus = next; fcb->lstclus = clus; }
+            if (!fat12_is_eof(next)) {
+                clus = next; clpos++;
+                fcb->lstclus = clus; fcb->cluspos = clpos;
+            }
             sic = 0;
         }
     }
