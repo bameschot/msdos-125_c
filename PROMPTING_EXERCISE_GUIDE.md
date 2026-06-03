@@ -21,6 +21,36 @@ Work through these in order.  Each exercise's output becomes input to the next.
 
 ---
 
+## What You Are Building
+
+The original MS-DOS 1.25 is made up of three distinct parts.  The port follows
+the same structure:
+
+**The kernel** (`MSDOS.ASM`) is the core of the operating system.  It manages
+the FAT12 filesystem — reading and writing clusters on disk, tracking which
+clusters belong to which file, and finding free space.  It also implements the
+system call interface that programs use to open files, read and write data, and
+query the disk.  The kernel knows nothing about the terminal or the host machine;
+all hardware access goes through an abstraction layer.
+
+**The command processor** (`COMMAND.ASM`) is the interactive shell — the program
+that prints a prompt, reads commands, and runs them.  It sits on top of the
+kernel and calls the kernel's system calls to do its file operations.  It is also
+where new shell commands are added.
+
+**The host wrapper** (replaces `IO.ASM`) is the layer that connects the kernel
+to the real hardware of the machine you are running on.  In the original it spoke
+directly to PC hardware; in the C port it speaks to the terminal using POSIX APIs
+and stores the disk as a file on the host filesystem.
+
+**The disk image** is a single binary file that contains a complete FAT12
+filesystem — the same format that a physical floppy disk would have.  The wrapper
+opens it on start and flushes it on exit.  Everything the shell does to "disk" is
+actually a read or write inside this file.  Creating a blank image and the supported sizes are things you can ask for when
+building the host wrapper in Exercise 4.
+
+---
+
 ## Before You Start
 
 ### What is in the repository
@@ -53,6 +83,10 @@ guide teaches you to get reliable results from a standing start.
 4. **Use a review prompt when output is large.** Before accepting a substantial
    result, ask Claude to review it.  See *The Review Prompt* section below.
 
+5. **Keep a living README and CLAUDE.md.** After each exercise, ask Claude to
+   update both files to reflect what has been built.  See *Living Documentation*
+   below.
+
 ---
 
 ## The Review Prompt
@@ -78,6 +112,30 @@ Use it after every exercise that produces non-trivial output.
 
 ---
 
+## Living Documentation
+
+As the project grows across multiple sessions, Claude loses track of what has
+already been built.  A `README.md` and a `CLAUDE.md` that stay up to date solve
+this: at the start of any new session you paste them in as context, and Claude
+immediately knows the current state of the project.
+
+After each exercise, ask:
+
+> "Update README.md and CLAUDE.md to reflect what was just added."
+
+`README.md` should describe the project for a user: what it does, how to build
+it, and which commands are available.  `CLAUDE.md` should describe the project
+for Claude: the architecture, the key design decisions, what files exist and what
+they do, and any rules that must be kept (such as the no-direct-I/O rule in the
+kernel).
+
+A good `CLAUDE.md` entry after Exercise 3 might read: *"The kernel in `src/kernel/`
+must never call printf, fread, or any POSIX function directly.  All I/O goes
+through the `bios_t` vtable defined in `bios.h`."*  That rule will then be
+applied consistently in every future session without you having to repeat it.
+
+---
+
 ## Exercise 1 — Get a Map of the Codebase
 
 ### Prompting objective
@@ -98,6 +156,9 @@ additions make the output more useful:
   showing its responsibility, what it provides, and what it depends on."
 - Ask for a **dependency diagram**: "add a short diagram showing which files
   call into which."
+
+Ask Claude to save the result as `CLAUDE.md` in the repository so it can be
+used as context in future sessions.
 
 ### Quality bar
 The output should name specific roles ("FAT12 cluster allocation", "keyboard and
@@ -157,6 +218,13 @@ in a kernel function later, the abstraction rule was not applied.
 ### Prompting objective
 Scope a large porting task into layers you can test one at a time.
 
+### Background
+The kernel manages the FAT12 filesystem and exposes a system call interface to
+the shell.  It knows nothing about the terminal or the host — all hardware access
+goes through the vtable from Exercise 2.  Inside it is layered: FAT arithmetic
+at the bottom, disk buffering, file control, and the system call dispatcher at
+the top.  Porting bottom-up means each layer is tested before anything builds on it.
+
 ### Task
 Port `MSDOS.ASM` to C.
 
@@ -181,6 +249,9 @@ After each layer, use the review prompt before running it:
 > "Review the layer you just wrote.  What are the most likely correctness
 > problems?"
 
+When the kernel is complete, ask Claude to update `CLAUDE.md` with the file
+layout, the vtable rule, and a brief description of each kernel layer.
+
 ### Quality bar
 Each layer's tests should pass before the next layer starts.  No kernel file
 should call `printf`, `fread`, or any other I/O function from the C standard
@@ -198,6 +269,14 @@ library — all I/O goes through the vtable.
 
 ### Prompting objective
 Describe a component by what it must do, not how to implement it.
+
+### Background
+The wrapper is the only part that talks to the real machine.  It implements the
+vtable the kernel calls through — terminal input/output and disk sector reads and
+writes — and contains `main()`, which opens the disk image, runs the shell, and
+flushes everything on exit.  The disk image is a raw binary file in standard
+FAT12 format: a boot sector with geometry info, two FAT copies, a root directory,
+and data sectors, exactly as a real floppy disk would be laid out.
 
 ### Task
 Write the POSIX layer that makes the kernel run on a modern system — terminal
@@ -217,9 +296,17 @@ One addition avoids a common pitfall with the editor you will add later:
 
 Without this, arrow keys and control characters will not work in the editor.
 
-If you do not yet have a disk image to test with, add:
+You will also need a disk image to test with.  Ask for it as part of this exercise:
 
-- "Also add a `--format` flag that creates a blank FAT12 disk image."
+- "Also add a `--format path --720` flag that creates a blank FAT12 disk image.
+  Support `--180`, `--360`, and `--720` for different sizes."
+
+The three sizes correspond to common floppy disk capacities; `--720` is the most
+useful for testing as it gives the most space.
+
+After completing this exercise, ask Claude to update `README.md` with build
+instructions and the `--format` usage, and update `CLAUDE.md` with a description
+of the wrapper's role and file location.
 
 ### Quality bar
 Running `./msdos disk.img` should reach a prompt.  Test this before moving on.
@@ -236,6 +323,13 @@ Running `./msdos disk.img` should reach a prompt.  Test this before moving on.
 
 ### Prompting objective
 Describe behaviour precisely so Claude does not have to guess what the user sees.
+
+### Background
+The command processor is the interactive shell.  It calls into the kernel for all
+file operations and has no direct access to the disk.  Commands are dispatched
+through an internal table; anything not found falls back to a "bad command"
+message (the original would attempt to run a `.COM` file, but this port has no
+x86 emulator).
 
 ### Task
 Port `COMMAND.ASM` to produce an interactive shell with file commands.
@@ -262,6 +356,10 @@ Commands that were *not* in the original — `ECHO`, `VER`, `CLS`, and `CHKDSK`
 — will need to be asked for separately.  A single follow-up prompt is enough:
 "Add ECHO, VER, CLS, and CHKDSK commands."  `HELP` is covered as its own
 exercise next.
+
+After the commands are working, ask Claude to update `README.md` with the command
+list and update `CLAUDE.md` with the command table structure so future sessions
+know how to add new commands.
 
 ### Quality bar
 `DIR` on an empty disk should show zero files and a correct free-space number.
@@ -298,6 +396,9 @@ This exercise also introduces a useful pattern for any future renaming or
 reorganisation: before making a change that touches a name in multiple places,
 ask "list every place [name] appears in the codebase" first, then ask for the
 change in a second prompt.
+
+After adding HELP, ask Claude to update `README.md` to include the new command,
+and remind it to keep `README.md` current after every addition from this point on.
 
 ### Quality bar
 `HELP` should list every command the shell supports.  If a command you added
@@ -345,7 +446,9 @@ After receiving the implementation, use the review prompt:
 > "Review the editor implementation.  What are the most likely problems with key
 > handling or file save/load that I should test first?"
 
-Then test in that order.
+Then test in that order.  Once the editor is working, ask Claude to update
+`CLAUDE.md` with how the editor is structured and note any key binding decisions
+that were made — these are easy to forget and painful to rediscover.
 
 ### Quality bar
 Test by opening a file, making a change, saving, and reopening — the change
@@ -387,6 +490,12 @@ four steps, testing after each one before moving to the next:
 4. "Add INPUT and built-in functions: INT, RND, LEN, CHR$, STR$, LEFT$, RIGHT$,
    MID$."
 
+> **Side note — let Claude write the test programs.**  After each step, rather
+> than writing a test program yourself, ask Claude: "Write a short BASIC program
+> that tests what was just added."  It knows the dialect it just implemented and
+> will produce something that exercises the new features directly.  You just run
+> it and observe.
+
 After step 2, write and run this program to verify before continuing:
 
 ```
@@ -403,6 +512,10 @@ Use the review prompt after step 3:
 
 > "Review the control flow implementation.  What are the most likely problems
 > with FOR/NEXT or GOSUB that I should test?"
+
+When the interpreter is complete, ask Claude to update `README.md` with a BASIC
+syntax summary and example programs, and update `CLAUDE.md` with the interpreter's
+design — particularly the expression evaluator and the statement dispatch approach.
 
 ### Quality bar
 The number guessing game from the README should run to completion with no
@@ -444,6 +557,10 @@ a way to make the directory layer aware of the current directory instead?"
 Once you have the design confirmed, ask for the implementation:
 
 > "Implement it.  The shell prompt should show the current path."
+
+After this exercise, ask Claude to update both `README.md` (with the new commands
+and a subdirectory example) and `CLAUDE.md` (with how the current directory is
+tracked and how the disk layer was changed).
 
 ### Quality bar
 Run through this sequence manually: create a directory, enter it, create a file,
@@ -491,6 +608,9 @@ After getting the test suite, use the review prompt:
 Anything that passes with a broken implementation is not testing anything useful —
 ask Claude to replace it.
 
+Update `CLAUDE.md` after this exercise to note how to run the tests and what each
+test file covers — this is especially useful when returning to the project after a break.
+
 ### Quality bar
 Build and run with `-fsanitize=address,undefined`.  Every test that passes should
 fail if you deliberately break the thing it tests.
@@ -506,12 +626,13 @@ fail if you deliberately break the thing it tests.
 ## The Session Pattern
 
 ```
-1. Context first    Paste the translation reference from Exercise 2.
+1. Context first    Paste CLAUDE.md and the translation reference.
 2. One thing        One task or question per prompt.
 3. Constraints      State what must not happen — Claude will respect them.
 4. Review           Use the review prompt before running large results.
 5. Test             Run the code and observe; describe what you see.
 6. Iterate          Describe the observed symptom; ask for the cause.
+7. Document         Ask Claude to update README.md and CLAUDE.md.
 ```
 
 ### When to change approach
@@ -522,6 +643,7 @@ fail if you deliberately break the thing it tests.
 | Same problem after two fix attempts | "Explain what the code is supposed to do here, step by step" |
 | Output is too large to know where to start | Use the review prompt first, then test the areas it flags |
 | Unsure whether the result is correct | "What would a test that catches a bug here look like?" |
+| Starting a new session on an existing project | Paste CLAUDE.md first so Claude knows what has been built |
 
 ---
 
@@ -534,6 +656,7 @@ fail if you deliberately break the thing it tests.
 | "Write tests for X" alone | Produces happy-path tests only | Add "focus on edge cases and error conditions" |
 | Two unrelated tasks in one prompt | Hard to test separately | One topic per prompt |
 | Accepting output without reviewing | Misses predictable problems | Use the review prompt on any large result |
+| Starting a new session without context | Claude starts from scratch | Always open with CLAUDE.md |
 
 ---
 
@@ -544,5 +667,7 @@ fail if you deliberately break the thing it tests.
 | `claude-prompts.md` | The original one-line prompts — short because context had built up; this guide builds that context deliberately |
 | `v1.25/CLAUDE.md` | An example of the Exercise 1 output |
 | `v1.25/8086_to_c_reference.md` | An example of the Exercise 2 reference document |
+| `CLAUDE.md` | Your living architecture document — keep it current |
+| `README.md` | Your living user-facing document — keep it current |
 | `src/` | The finished port — a fallback if you get stuck |
 | `tests/` | Concrete examples of the isolation strategies from Exercise 10 |
