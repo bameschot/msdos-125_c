@@ -212,7 +212,13 @@ static int ed_load(ed_t *e, dos_t *dos)
         pos += n;
         if (rc == DOS_PARTIAL) break;
     }
-    flat[pos] = '\n';   /* ensure final newline */
+    /* Ensure the loop sees a terminating '\n' for files that don't end
+     * in one.  When the file already ends in '\n', set flat[pos] to
+     * '\0' so the loop does not create a spurious empty trailing line. */
+    if (pos > 0 && flat[pos - 1] == '\n')
+        flat[pos] = '\0';
+    else
+        flat[pos] = '\n';
     flat[pos + 1] = '\0';
 
     dos_close(dos, &fcb);

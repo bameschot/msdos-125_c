@@ -1,0 +1,176 @@
+MS-DOS 1.25 COMMAND REFERENCE
+==============================
+
+Type any command at the A> prompt (not case-sensitive).
+File names follow the 8.3 format: NAME.EXT (max 8+3 chars).
+Wildcards: * matches any sequence, ? matches one character.
+
+
+FILE COMMANDS
+-------------
+
+DIR [spec]
+  List files in the current directory.
+    DIR           list all files
+    DIR *.BAS     list only .BAS files
+    DIR A*.*      list files starting with A
+  Output shows: name, size in bytes, date, and free space.
+
+TYPE filename
+  Display a text file on screen, one byte at a time.
+  Stops at Ctrl-Z (ASCII 26, the DOS end-of-file marker).
+  Example:  TYPE README.TXT
+
+OPEN filename
+  Like TYPE but displays ALL bytes including control
+  characters, shown as ^X (e.g. ^A for ASCII 1).
+  Useful for inspecting binary or unusual files.
+
+COPY source destination
+  Copy a file to a new name.
+  Both file names are required.
+  Example:  COPY FIB.BAS BACKUP.BAS
+
+DEL filename
+ERASE filename
+  Delete one or more files.  Wildcards accepted.
+  DEL *.*  will ask for confirmation (Y or N).
+  Examples:
+    DEL BACKUP.BAS
+    DEL *.BAK
+
+REN oldname newname
+RENAME oldname newname
+  Rename a file.  Wildcards work in both names.
+  Example:  REN *.BAS *.OLD
+
+CREATE filename
+  Create a new, empty file.
+  Wildcards are not allowed.
+
+
+DIRECTORY COMMANDS
+------------------
+
+MKDIR dirname
+MD dirname
+  Create a new subdirectory in the current directory.
+  Example:  MKDIR GAMES
+
+RMDIR dirname
+RD dirname
+  Remove a subdirectory.  It must be empty first.
+  You cannot remove the current directory.
+  Example:  RMDIR GAMES
+
+CD [path]
+CHDIR [path]
+  Change the current directory.
+    CD \        go to the root
+    CD ..       go up one level
+    CD GAMES    enter the GAMES subdirectory
+    CD          display the current path
+
+  The current directory is shown in the prompt:
+    A>          (root)
+    A:\GAMES>   (in the GAMES subdirectory)
+
+
+DISK COMMANDS
+-------------
+
+CHKDSK
+  Report disk space usage:
+  total bytes on disk, bytes used, bytes free,
+  total clusters, free clusters.
+
+
+DATE AND TIME COMMANDS
+----------------------
+
+DATE
+  Display the current date.
+  Press Enter to keep it, or enter a new date:
+    6-15-1984   or   06-15-84  (MM-DD-YY or MM-DD-YYYY)
+  Two-digit years 00-79 are treated as 2000-2079.
+  Two-digit years 80-99 are treated as 1980-1999.
+
+TIME
+  Display the current time.
+  Press Enter to keep it, or enter a new time:
+    14:30:00  or  9:05  (HH:MM or HH:MM:SS, 24-hour)
+
+
+SYSTEM COMMANDS
+---------------
+
+VER
+  Display the MS-DOS version number.
+
+CLS
+  Clear the screen.
+
+ECHO [message]
+  Print a message to the screen.
+  Example:  ECHO HELLO, WORLD
+
+REM [text]
+  Remark -- does nothing.  Useful for noting things.
+
+PAUSE
+  Print "Strike a key when ready" and wait for a keypress.
+
+HELP [command]
+  With no argument, list all commands.
+  With a command name, show a brief description.
+  Examples:  HELP        HELP DIR        HELP COPY
+
+
+APPLICATION COMMANDS
+--------------------
+
+BASIC filename.BAS
+  Load and run a BASIC program.
+  See BASIC.TXT for the language reference.
+  Example:  BASIC HAMURABI.BAS
+
+EDIT filename
+  Open the full-screen text editor.
+  The file is created if it does not exist.
+
+  Key bindings inside EDIT:
+    Arrow keys      move the cursor
+    Home / End      start / end of line
+    Ctrl+Home       top of file
+    Ctrl+End        bottom of file
+    PgUp / PgDn     scroll one screen
+    Backspace       delete character before cursor
+    Del             delete character at cursor
+    Enter           split line / insert new line
+    Tab             insert 4 spaces
+    Ctrl+W          SAVE (Write)
+    Ctrl+X          QUIT (prompts if there are unsaved changes)
+    Ctrl+G          GOTO a line number
+
+
+DRIVE COMMANDS
+--------------
+
+A:  B:  C:  ...
+  Switch to another drive.
+  The prompt always shows the current drive letter.
+
+
+EXIT
+  Leave MS-DOS and return to the host operating system.
+
+
+NOTES
+-----
+  * Command names are not case-sensitive (DIR = dir = Dir).
+  * File names are case-insensitive and stored in uppercase.
+  * 8.3 file names only: up to 8 characters, dot, up to 3.
+  * Subdirectory paths use backslash: \GAMES\SAVED
+  * No PATH variable; only the current directory is searched.
+  * External .COM/.EXE files cannot be executed (no x86 CPU
+    emulator is included in this port).

@@ -32,6 +32,12 @@ src/
   host/            POSIX host wrapper — replaces IO.ASM
     bios_host.h / bios_host.c  termios console, disk image I/O, clock
     main.c         Entry point, --format mode, boot sequence
+
+tests/
+  test_fat.c       FAT12 unit tests (94 tests) — pure in-memory, no BIOS
+  test_basic.c     BASIC interpreter tests (114 tests) — kernel stubs
+  test_edit.c      Editor unit tests (143 tests) — #include edit.c directly
+  test_command.c   Command processor integration tests (110 tests) — fake disk
 ```
 
 **Line counts (approximate):**
@@ -734,10 +740,112 @@ main(argc, argv)
 
 ---
 
+## Tests
+
+Run with `make test` — builds and executes all four suites (461 tests total,
+0 expected failures).
+
+```sh
+make test
+```
+
+### `tests/test_fat.c` — FAT12 unit tests (94 tests)
+
+**Isolation strategy:** pure in-memory.  No BIOS, no disk I/O, no `dos_t`.
+`fat_buf_t` provides the required 2-byte prefix (`fat[-2]`/`fat[-1]`) so
+`dpb->fat` can be pointed directly into it.  Compiled with only `fat.c` and
+`disk.c`.
+
+**Coverage:** `fat_unpack`/`fat_pack` (round-trip, even/odd indices, neighbour
+isolation), `fat_fndclus` (fresh chain, cache hit/miss, short chain), EOF
+detection, `fat_release`/`fat_relblks`, `fat_allocate` (fresh file, extend
+chain, full disk, fragmented free list), `disk_figrec` (cluster→sector
+arithmetic).
+
+### `tests/test_basic.c` — BASIC interpreter tests (114 tests)
+
+**Isolation strategy:** kernel stubs compiled with `basic.c`.  A global
+`g_prog` C string serves as the fake file; `dos_seqrd` serves 128-byte chunks
+from it; `chardev_out` appends to a `g_out` capture buffer.
+
+**Coverage:** `PRINT` (separators, column tabs, suppress-CRLF), arithmetic
+(precedence, parentheses, unary minus, division by zero), all 6 comparison
+operators (numeric and string), `AND`/`OR`/`NOT`, variables (`A`–`Z` and
+`A$`–`Z$`), all 12 built-in functions (`INT ABS SQR RND LEN ASC VAL CHR$
+STR$ LEFT$ RIGHT$ MID$`), `GOTO`, `GOSUB`/`RETURN` (nested), `FOR`/`NEXT`
+(positive/negative step, nested loops), `IF`/`THEN` (line-number and inline),
+`REM`/`'`, multi-statement lines (`:`), `INPUT`, integration programs
+(Fibonacci, factorial, string operations).
+
+### `tests/test_edit.c` — editor unit tests (143 tests)
+
+**Isolation strategy:** `#include "../src/command/edit.c"` gives access to all
+`static` functions without a dedicated header.  Stdout is redirected to
+`/dev/null` via `dup2` for any test that triggers ANSI rendering.  `dos_*`
+functions are stubbed; `mock_getkey` drives confirmation dialogs.
+
+**Coverage:** `ed_make_line`, `ed_init`, `ed_insert_char`, `ed_delete_char`,
+`ed_split_line`, `ed_join_lines`, `ed_clamp_col`, `ed_scroll`; all editing
+keys (Backspace, Delete, Enter/split, Tab→4 spaces); all navigation keys
+(arrows, Home/End, Ctrl+Home/End, PgUp/PgDn); wrap behaviour (LEFT at col 0
+wraps to previous line, RIGHT at EOL wraps forward); Ctrl+W save, Ctrl+X/Esc
+quit with Y/N/C prompt; `ed_load` (CRLF, LF-only, empty file, blank lines,
+no trailing newline); `ed_save` round-trip.
+
+**Bug found during test development:** `ed_load` added a spurious trailing
+empty line for any file ending with `\n` because the sentinel `\n` was written
+even when `flat[pos-1]` was already `\n`.  Fixed in `src/command/edit.c`.
+
+### `tests/test_command.c` — command processor integration tests (110 tests)
+
+**Isolation strategy:** real kernel (`fat.c`, `disk.c`, `fcb.c`, `fileio.c`,
+`chardev.c`, `datetime.c`, `kernel.c`, `command.c`) running on a fake 180 KB
+FAT12 disk image held entirely in a `uint8_t g_disk[360*512]` array.  The
+fake BIOS captures `bios->out` calls into `g_out[]` and serves `bios->in`
+from a `g_in_buf[]` string.  Date/time state is persisted across
+`bios_setdate`/`bios_settime` → `bios_gettime` calls so `dos_setdate` /
+`dos_settime` round-trips correctly.  `editor_run` and `basic_run` are
+no-op stubs (covered by their own suites).
+
+**Disk geometry (180 KB):** 1 boot sector + 2 FAT sectors × 2 copies + 7
+root-directory sectors + 348 data sectors; 1 sector/cluster; 112 root entries.
+
+**Coverage:**
+
+| Suite | Tests |
+|-------|-------|
+| ECHO | 6 |
+| VER | 2 |
+| REM | 4 |
+| HELP | 5 |
+| Dispatch (EXIT, drive change, aliases, unknown) | 7 |
+| DATE / TIME (display, set, 2-digit year, invalid) | 7 |
+| CREATE | 4 |
+| TYPE (content, Ctrl-Z stop) | 6 |
+| OPEN (caret notation, CR/LF, TAB) | 7 |
+| COPY | 6 |
+| DEL (wildcards, `*.*` Y/N prompt) | 7 |
+| REN | 4 |
+| CHKDSK (total/free bytes) | 4 |
+| DIR (listing, wildcards, sizes, free bytes) | 9 |
+| CD (path display, `\` reset, error paths) | 5 |
+| MKDIR / RMDIR | 10 |
+| CLS | 1 |
+| `print_uint` formatting | 3 |
+
+**Bug found during test development:** `cmd_dir` called `str_to_dos_name`
+which copies `*` literally; the name-comparison loop only recognises `?`
+wildcards, so `DIR *.TXT` never matched any file.  Fixed in
+`src/command/command.c` by replacing `str_to_dos_name` with `dos_makefcb`
+which expands `*` → `?…?`.
+
+---
+
 ## Build
 
 ```sh
 make            # produces ./msdos
+make test       # builds and runs all 461 tests
 make clean
 make format-test  # formats test.img --720 and boots it
 ```

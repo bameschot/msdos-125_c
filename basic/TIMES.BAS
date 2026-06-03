@@ -8,7 +8,7 @@
 80 IF N > 0 THEN 100
 90 GOTO 50
 100 PRINT ""
-110 PRINT "--- TIMES TABLE FOR "; N; "---"
+110 PRINT "--- TIMES TABLE FOR "; N; " ---"
 120 PRINT ""
 130 FOR I = 1 TO 12
 140   PRINT "  "; N; " x "; I; " = "; N * I

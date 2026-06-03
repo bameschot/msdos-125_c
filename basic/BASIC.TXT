@@ -1,0 +1,187 @@
+MS-DOS 1.25 BASIC INTERPRETER REFERENCE
+=========================================
+
+RUNNING A PROGRAM
+-----------------
+  BASIC filename.BAS
+
+The interpreter loads the whole program, sorts lines by
+number, then runs from the lowest-numbered line.
+Maximum 1 000 lines per program.
+
+
+PROGRAM STRUCTURE
+-----------------
+Every line begins with a line number (1-65535).
+Multiple statements on one line are separated by colon (:).
+Lines are executed in ascending line-number order.
+
+  10 REM This is a comment
+  20 A = 6: B = 7
+  30 PRINT "The answer is"; A * B
+  40 END
+
+
+STATEMENTS
+----------
+
+REM text
+' text
+  Remark (comment).  The rest of the line is ignored.
+
+PRINT [items]
+  Print values to the screen.
+  Separate items with ; for no gap between them.
+  Separate items with , to advance to the next tab stop
+    (tab stops every 14 columns).
+  A trailing ; suppresses the newline after the line.
+  Examples:
+    PRINT "HELLO"
+    PRINT "X = "; X
+    PRINT A, B, C
+    PRINT "VALUE: "; X;      (no newline at end)
+
+INPUT ["prompt";] variable
+  Read a value from the keyboard.  A "?" cursor is shown.
+  Optional prompt string is displayed before the "?".
+  Examples:
+    INPUT A
+    INPUT "YOUR NAME: "; N$
+    INPUT "ENTER A NUMBER: "; X
+
+LET variable = expression
+variable = expression
+  Assign a value.  LET is optional.
+  String variables end with $, numeric variables do not.
+  Examples:
+    LET X = 3.14
+    A$ = "HELLO"
+
+IF expression THEN linenumber
+IF expression THEN statement
+  If the expression is non-zero (true), either jump to the
+  given line number, or execute a single statement.
+  Examples:
+    IF X > 10 THEN 200
+    IF A$ = "Y" THEN PRINT "YES"
+
+GOTO linenumber
+  Unconditional jump to the given line.
+
+GOSUB linenumber
+  Call a subroutine at the given line.
+  Execution continues after the matching RETURN.
+  Up to 32 GOSUB calls may be nested.
+
+RETURN
+  Return from the most recent GOSUB.
+
+FOR variable = start TO end [STEP increment]
+  ...body...
+NEXT [variable]
+  Loop variable from start to end.
+  Default increment is 1.  Use negative STEP to count down.
+  Up to 16 FOR loops may be nested.
+  Example:
+    FOR I = 1 TO 10
+      PRINT I
+    NEXT I
+
+    FOR X = 10 TO 1 STEP -1
+      PRINT X
+    NEXT X
+
+END
+STOP
+  Stop the program and return to the command prompt.
+
+
+VARIABLES
+---------
+  Numeric : A  through Z   (26 variables, 64-bit float)
+  String  : A$ through Z$  (26 variables, up to 255 chars)
+
+All variables are global.  There are no local variables,
+no arrays, and no user-defined functions.
+
+
+OPERATORS
+---------
+  Arithmetic : +  -  *  /  ^   (^ = power)
+  Unary      : -  NOT
+  String     : +              (concatenation only)
+  Comparison : =  <>  <  >  <=  >=
+    Comparison results: -1 = TRUE, 0 = FALSE
+  Logical    : AND  OR  NOT
+
+  Precedence (highest to lowest):
+    ^
+    unary -   NOT
+    *   /
+    +   -
+    =   <>   <   >   <=   >=
+    AND
+    OR
+
+
+BUILT-IN FUNCTIONS
+------------------
+
+Numeric functions:
+  INT(x)        Truncate to integer (toward zero)
+  ABS(x)        Absolute value
+  SQR(x)        Square root
+  RND(x)        Random number in [0, 1)  (argument ignored)
+
+String / conversion functions:
+  LEN(s$)          Number of characters in s$
+  ASC(s$)          ASCII code of the first character of s$
+  VAL(s$)          Parse s$ as a number (0 if not numeric)
+  CHR$(n)          Character whose ASCII code is n
+  STR$(x)          Convert number x to a string
+  LEFT$(s$, n)     First n characters of s$
+  RIGHT$(s$, n)    Last n characters of s$
+  MID$(s$, i, n)   n characters from s$, starting at pos i
+                   (positions are 1-based)
+
+
+ERROR MESSAGES
+--------------
+  ?SYNTAX ERROR IN n          Unknown statement or bad syntax
+  ?TYPE MISMATCH IN n         Wrong type (e.g. number as string)
+  ?DIVISION BY ZERO IN n      Division by zero attempted
+  ?UNDEFINED LINE nnn IN n    GOTO/GOSUB to non-existent line
+  ?NEXT WITHOUT FOR IN n      NEXT with no open FOR loop
+  ?RETURN WITHOUT GOSUB IN n  RETURN with no open GOSUB
+  ?GOSUB OVERFLOW IN n        More than 32 GOSUB calls nested
+  ?FOR OVERFLOW IN n          More than 16 FOR loops nested
+
+
+LIMITATIONS
+-----------
+  No arrays (DIM not supported)
+  No DATA / READ / RESTORE
+  No WHILE / WEND
+  No DEF FN  (user-defined functions)
+  No ON GOTO / ON GOSUB
+  Maximum 1 000 lines per program
+  Maximum 16 nested FOR loops
+  Maximum 32 nested GOSUB calls
+  INT() truncates toward zero (classic BASIC floors to -inf)
+
+
+EXAMPLE PROGRAMS ON THIS DISK
+------------------------------
+  Run any program with:  BASIC filename.BAS
+  Edit any program with: EDIT  filename.BAS
+
+  FIB.BAS       Fibonacci sequence
+  GUESS.BAS     Number guessing game
+  CALC.BAS      4-function calculator with memory
+  TIMES.BAS     Multiplication tables
+  HAMURABI.BAS  Govern ancient Sumeria (classic 1973 game)
+  PRIMES.BAS    List prime numbers up to a given limit
+  CONVERT.BAS   Unit converter (temperature, length, weight)
+  LOAN.BAS      Monthly loan payment calculator
+  STATS.BAS     Descriptive statistics calculator
+  QUIZ.BAS      Mental arithmetic quiz

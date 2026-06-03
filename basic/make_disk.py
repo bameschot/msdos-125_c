@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-make_disk.py  --  Create a 720 KB FAT12 disk image pre-loaded with BASIC
-                  example programs and a HELP.TXT reference file.
+make_disk.py  --  Create a 720 KB FAT12 demo disk pre-loaded with BASIC
+                  example programs and help files.
 
 Run from the repository root:
     python3 basic/make_disk.py [output.img]
 
-Default output: basic_demo.img
+Default output: demo.img
 """
 
 import os
@@ -22,13 +22,23 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT  = os.path.dirname(SCRIPT_DIR)
 MSDOS_BIN  = os.path.join(REPO_ROOT, 'msdos')
 
+# Files to place on the disk, in order.  Each entry is either:
+#   'FILENAME'              (host path = basic/FILENAME, disk name = FILENAME)
+#   ('host_name', 'disk_name')   (explicit mapping)
 FILES = [
-    'HELP.TXT',
-    'CALC.BAS',
-    'GUESS.BAS',
-    'HAMURABI.BAS',
-    'TIMES.BAS',
+    'README.TXT',
+    'OS.TXT',
+    'BASIC.TXT',
     'FIB.BAS',
+    'GUESS.BAS',
+    'CALC.BAS',
+    'TIMES.BAS',
+    'HAMURABI.BAS',
+    'PRIMES.BAS',
+    'CONVERT.BAS',
+    'LOAN.BAS',
+    'STATS.BAS',
+    'QUIZ.BAS',
 ]
 
 # ---------------------------------------------------------------------------
@@ -49,7 +59,7 @@ class Fat12Image:
         self.reserved_secs = struct.unpack_from('<H', d, 14)[0]
         self.num_fats      = d[16]
         self.root_entries  = struct.unpack_from('<H', d, 17)[0]
-        self.fat_size      = struct.unpack_from('<H', d, 22)[0]  # secs per FAT
+        self.fat_size      = struct.unpack_from('<H', d, 22)[0]
 
         bps = self.bytes_per_sec
         self.fat1_off  = self.reserved_secs * bps
@@ -58,7 +68,7 @@ class Fat12Image:
         self.data_off  = self.root_off + self.root_entries * 32
         self.clus_size = self.secs_per_clus * bps
         self.total_clusters = (len(self.data) - self.data_off) // self.clus_size
-        self._root_idx = 0   # next free root directory slot
+        self._root_idx = 0
 
         print(f"  BPB: {bps} bytes/sec, {self.secs_per_clus} sec/clus, "
               f"{self.fat_size} FAT secs, {self.root_entries} root entries")
@@ -86,12 +96,11 @@ class Fat12Image:
     # --- Cluster allocation -------------------------------------------------
 
     def alloc_cluster(self, prev=None):
-        """Find a free cluster, mark it EOF, optionally chain from prev."""
         for c in range(2, self.total_clusters + 2):
             if self.fat_get(c) == 0x000:
-                self.fat_set(c, 0xFFF)     # EOF marker
+                self.fat_set(c, 0xFFF)
                 if prev is not None:
-                    self.fat_set(prev, c)  # link chain
+                    self.fat_set(prev, c)
                 return c
         raise RuntimeError("Disk full")
 
@@ -106,12 +115,11 @@ class Fat12Image:
         if self._root_idx >= self.root_entries:
             raise RuntimeError("Root directory full")
         off = self.root_off + self._root_idx * 32
-        # 8-char name, 3-char ext (space-padded, upper-case)
         n = name8.upper().encode('ascii').ljust(8)[:8]
         e = ext3.upper().encode('ascii').ljust(3)[:3]
-        self.data[off:off+8]   = n
+        self.data[off:off+8]    = n
         self.data[off+8:off+11] = e
-        self.data[off+11] = 0x20          # ARCHIVE attribute
+        self.data[off+11] = 0x20
         self.data[off+12:off+26] = b'\x00' * 14
         struct.pack_into('<H', self.data, off + 26, first_clus)
         struct.pack_into('<I', self.data, off + 28, file_size)
@@ -141,7 +149,7 @@ class Fat12Image:
             offset   += self.clus_size
 
         self.write_root_entry(name, ext, first_clus, size)
-        print(f"  {filename:<14}  {size:>5} bytes  (cluster {first_clus})")
+        print(f"  {filename:<14}  {size:>5} bytes")
 
     def save(self):
         with open(self.path, 'wb') as f:
@@ -151,54 +159,65 @@ class Fat12Image:
 # Main
 # ---------------------------------------------------------------------------
 
+def normalise_crlf(raw):
+    """Normalise any line ending style to DOS CRLF."""
+    text = raw.decode('ascii', errors='replace')
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+    return text.replace('\n', '\r\n').encode('ascii', errors='replace')
+
 def main():
-    out_img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO_ROOT, 'basic_demo.img')
+    out_img = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO_ROOT, 'demo.img')
 
     if not os.path.isfile(MSDOS_BIN):
         print(f"ERROR: {MSDOS_BIN} not found. Run 'make' first.")
         sys.exit(1)
 
     # 1. Format the image
-    print(f"Formatting {out_img} ...")
+    print(f"Formatting {out_img} (720 KB FAT12)...")
     result = subprocess.run(
         [MSDOS_BIN, '--format', out_img, '--720'],
         capture_output=True, text=True)
-    print(result.stderr.strip())
+    if result.stderr.strip():
+        print(f"  {result.stderr.strip()}")
     if result.returncode != 0:
-        print("Format failed:", result.stdout)
+        print("Format failed.")
         sys.exit(1)
 
     # 2. Open image and write files
     img = Fat12Image(out_img)
-    print(f"\nWriting files from {SCRIPT_DIR}:")
+    print(f"\nWriting files:")
 
-    for filename in FILES:
-        src = os.path.join(SCRIPT_DIR, filename)
+    for entry in FILES:
+        if isinstance(entry, tuple):
+            host_name, disk_name = entry
+        else:
+            host_name = disk_name = entry
+
+        src = os.path.join(SCRIPT_DIR, host_name)
         if not os.path.isfile(src):
             print(f"  WARNING: {src} not found, skipping.")
             continue
+
         with open(src, 'rb') as f:
             raw = f.read()
-        # Normalise to DOS line endings (CRLF) for text files
-        if filename.endswith(('.TXT', '.BAS')):
-            text = raw.decode('ascii', errors='replace')
-            text = text.replace('\r\n', '\n').replace('\r', '\n')
-            raw  = text.replace('\n', '\r\n').encode('ascii', errors='replace')
-        img.write_file(filename, raw)
+
+        # Normalise to DOS CRLF for text and BASIC files
+        if host_name.upper().endswith(('.TXT', '.BAS')):
+            raw = normalise_crlf(raw)
+
+        img.write_file(disk_name, raw)
 
     img.save()
 
-    # 3. Quick sanity-check via DIR
-    print(f"\nDirectory listing of {out_img}:")
-    check = subprocess.run(
-        ['bash', '-c', f'printf "DIR\\nEXIT\\n" | {MSDOS_BIN} {out_img}'],
-        capture_output=True, text=True)
-    # Print only the DIR output lines
-    for line in check.stdout.splitlines():
-        print(f"  {line}")
-
-    print(f"\nDone. Boot the image with:  ./msdos {out_img}")
-    print( "Then run programs with e.g.: BASIC HAMURABI.BAS")
+    # 3. Report
+    used = sum(1 for i in range(2, img.total_clusters + 2)
+               if img.fat_get(i) != 0x000)
+    free = img.total_clusters - used
+    print(f"\nDisk usage: {used} clusters used, {free} free "
+          f"({free * img.clus_size // 1024} KB free)")
+    print(f"\nDone.  Boot with:  ./msdos {out_img}")
+    print( "Then try:          TYPE README.TXT")
+    print( "                   BASIC HAMURABI.BAS")
 
 if __name__ == '__main__':
     main()

@@ -30,7 +30,7 @@
 101 REM YEAR SUMMARY
 102 REM ============================
 110 PRINT ""
-111 PRINT "--- YEAR "; Y; "OF 10 ---"
+111 PRINT "--- YEAR "; Y; " OF 10 ---"
 112 PRINT ""
 120 IF Q = 0 THEN 140
 121 PRINT Q; " PEOPLE STARVED AND DIED LAST YEAR."

@@ -89,7 +89,13 @@ static void cmd_dir(dos_t *dos, const char *args)
             drv = (uint8_t)(toupper((unsigned char)word[0]) - 'A');
             memmove(word, word + 2, strlen(word) - 1);
         }
-        str_to_dos_name(word, pattern);
+        /* Use FCB parsing so '*' is properly expanded to '?…?' wildcards */
+        fcb_t pfcb;
+        memset(&pfcb, 0, sizeof pfcb);
+        const char *wp = word;
+        dos_makefcb(dos, &wp, &pfcb, 0);
+        memcpy(pattern,     pfcb.name, 8);
+        memcpy(pattern + 8, pfcb.ext,  3);
     }
 
     dos->thisdrv = drv;
