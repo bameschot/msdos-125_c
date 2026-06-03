@@ -20,7 +20,7 @@ SRCS = \
 
 OBJS = $(SRCS:.c=.o)
 
-.PHONY: all clean format-test
+.PHONY: all clean format-test test
 
 all: $(TARGET)
 
@@ -35,5 +35,11 @@ format-test: $(TARGET)
 	./$(TARGET) --format test.img --720
 	./$(TARGET) test.img
 
+test: tests/test_fat
+	./tests/test_fat
+
+tests/test_fat: tests/test_fat.c src/kernel/fat.c src/kernel/disk.c
+	$(CC) $(CFLAGS) -I. -o $@ $^
+
 clean:
-	rm -f $(OBJS) $(TARGET) test.img
+	rm -f $(OBJS) $(TARGET) test.img tests/test_fat
