@@ -21,6 +21,20 @@ Work through these in order.  Each exercise's output becomes input to the next.
 
 ---
 
+## Attribution
+
+The assembly source used in these exercises is the original **MS-DOS 1.25**,
+written by **Tim Paterson** at Seattle Computer Products in 1982.  Microsoft has
+published it at:
+
+> **[https://github.com/microsoft/ms-dos](https://github.com/microsoft/ms-dos)**
+
+It is made available under the **MIT License**.  The C port you produce in these
+exercises is an independent reimplementation written from scratch using the
+assembly as a specification, and may also be released under the MIT License.
+
+---
+
 ## What You Are Building
 
 The original MS-DOS 1.25 is made up of three distinct parts.  The port follows
