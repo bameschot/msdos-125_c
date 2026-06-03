@@ -145,8 +145,9 @@ Use it after every exercise that produces non-trivial output.
 
 As the project grows across multiple sessions, Claude loses track of what has
 already been built.  A `README.md` and a `CLAUDE.md` that stay up to date solve
-this: at the start of any new session you paste them in as context, and Claude
-immediately knows the current state of the project.
+this: at the start of any new session you paste them in as context — or simply
+ask Claude to read them: "Read CLAUDE.md and README.md before we continue." —
+and Claude immediately knows the current state of the project.
 
 After each exercise, ask:
 
@@ -236,7 +237,9 @@ not concrete function implementations.  If you see `printf` or `fread` anywhere
 in a kernel function later, the abstraction rule was not applied.
 
 ### Iteration cues
-- Save this document and paste it at the top of every subsequent porting prompt.
+- Save this document as a file in the repository.  At the start of each
+  subsequent session, paste it in or ask Claude to read it: "Read the 8086-to-C
+  reference document before we continue."
 - If Claude makes inconsistent choices later, point back to the reference:
   "The reference says [X].  Revise to match it."
 
@@ -655,7 +658,7 @@ fail if you deliberately break the thing it tests.
 ## The Session Pattern
 
 ```
-1. Context first    Paste CLAUDE.md and the translation reference.
+1. Context first    Paste CLAUDE.md and the translation reference, or ask Claude to read them.
 2. One thing        One task or question per prompt.
 3. Constraints      State what must not happen — Claude will respect them.
 4. Review           Use the review prompt before running large results.
@@ -672,7 +675,7 @@ fail if you deliberately break the thing it tests.
 | Same problem after two fix attempts | "Explain what the code is supposed to do here, step by step" |
 | Output is too large to know where to start | Use the review prompt first, then test the areas it flags |
 | Unsure whether the result is correct | "What would a test that catches a bug here look like?" |
-| Starting a new session on an existing project | Paste CLAUDE.md first so Claude knows what has been built |
+| Starting a new session on an existing project | Paste CLAUDE.md or ask Claude to read it — either way, do it first |
 
 ---
 
