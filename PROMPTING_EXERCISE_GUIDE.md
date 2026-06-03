@@ -305,18 +305,38 @@ You will also need a disk image to test with.  Ask for it as part of this exerci
 The three sizes correspond to common floppy disk capacities; `--720` is the most
 useful for testing as it gives the most space.
 
+Ask Claude to also produce a `Makefile` in the **root of the repository** with
+at minimum a `make` target that builds the binary and a `make test` target that
+runs the test suite:
+
+- "Add a Makefile in the root directory with targets to build the project and
+  run the tests."
+
+Having a Makefile from the start means every subsequent exercise can be verified
+with the same two commands: `make` and `make test`.
+
+Once the wrapper compiles and formats a disk, ask for basic tests to confirm the
+wrapper itself is sound:
+
+- "Write tests for the wrapper that verify: a freshly formatted disk image has
+  the correct size, the boot sector contains a valid FAT12 signature, and opening
+  a non-existent image file produces an error rather than a crash."
+
 After completing this exercise, ask Claude to update `README.md` with build
 instructions and the `--format` usage, and update `CLAUDE.md` with a description
 of the wrapper's role and file location.
 
 ### Quality bar
-Running `./msdos disk.img` should reach a prompt.  Test this before moving on.
+Running `make` should produce a binary.  Running `./msdos disk.img` should reach
+a prompt.  Running `make test` should run and pass the wrapper tests.
 
 ### Iteration cues
 - If the program exits immediately, ask: "What should happen step by step between
   launch and the first prompt appearing?  Where might it be stopping early?"
 - If the disk image is rejected on load, ask: "What does the program check in the
   disk image when it opens it?"
+- If `make` fails, ask: "What does the Makefile need to find in order to build?
+  Is the source file layout what it expects?"
 
 ---
 
