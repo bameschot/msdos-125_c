@@ -346,6 +346,14 @@ a prompt.  Running `make test` should run and pass the wrapper tests.
 Scope a large porting task into layers you can test one at a time.
 
 ### Background
+This is the exercise with the least back-and-forth, but the most important to get
+right.  Bugs in the kernel — a cluster walk that skips an entry, a directory scan
+that stops too early — will not surface immediately.  They will appear later as
+mysterious failures in the editor, the BASIC interpreter, or the subdirectory
+commands, and by then Claude has no clear trail leading back to the root cause.
+Getting the kernel correct now prevents a class of debugging sessions that are
+expensive and hard to reason about.
+
 The kernel manages the FAT12 filesystem and exposes a system call interface to
 the shell.  It knows nothing about the terminal or the host — all hardware access
 goes through the vtable defined in Exercise 2 and implemented in Exercise 3.
@@ -358,8 +366,8 @@ Port `MSDOS.ASM` to C.
 
 ### Starting prompt
 
-> "Port the operating system kernel in `MSDOS.ASM` to C.  Use the reference
-> document below as the translation guide."
+> "Port the operating system kernel in `MSDOS.ASM` to C.  Use the 8086-to-C
+> porting guide we created earlier as the translation guide."
 
 ### Hints
 "Port the kernel" is a large task.  Two additions keep it manageable:
@@ -386,10 +394,15 @@ should call `printf`, `fread`, or any other I/O function from the C standard
 library directly.
 
 ### Iteration cues
-- If a test fails, describe what you observed: "The test expected [X] but got [Y].
-  What could cause that?"
-- If Claude produces a function that calls `printf` directly, quote the rule from
-  the reference document and ask it to revise.
+After each layer passes its tests, ask Claude to review it before moving on:
+
+> "Review the code you just wrote for correctness and conciseness.  Are there any
+> functions that could be simplified, and are there any edge cases that are not
+> handled?"
+
+A good review response will often surface at least one real issue — a missing
+bounds check, a cluster walk that does not handle an empty file, or a function
+that is longer than it needs to be.  Fix those before starting the next layer.
 
 ---
 
