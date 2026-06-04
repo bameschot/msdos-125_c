@@ -116,7 +116,16 @@ changed since the last commit?" to orient a new session quickly.
 6. **Commit when tests pass.** A passing commit is a safe rollback point.  If
    the next prompt breaks something, `git checkout .` gets you back instantly.
 
-7. **Match the model to the task.** Not every prompt needs the most powerful
+7. **Use plan mode for complex exercises.** Before asking Claude to write a
+   large or high-stakes piece of code, switch into plan mode (Shift+Tab in
+   Claude Code, or ask "think through the approach before writing any code").
+   Claude will reason through the design, surface trade-offs, and wait for your
+   approval before producing anything.  This is especially useful for the kernel
+   port and the BASIC interpreter — two exercises where a structural mistake is
+   expensive to undo.  Once you are happy with the plan, confirm it and Claude
+   will implement it in one coherent pass.
+
+8. **Match the model to the task.** Not every prompt needs the most powerful
    model.  A rough guide:
    - **Opus / high effort** — analysis, documentation, architecture decisions,
      the translation reference, and any prompt where the answer will be reused
@@ -366,14 +375,19 @@ Port `MSDOS.ASM` to C.
 
 ### Starting prompt
 
-> "Port the operating system kernel in `MSDOS.ASM` to C.  Use the 8086-to-C
-> porting guide we created earlier as the translation guide."
+> Port the operating system kernel in MSDOS.ASM to C. Use the 8086 assembly to c document as the translation guide. keep the kernal compact, functional and maintain the scope of the MSDOS.ASM. write test cases to verify the created kernel. integrate the kernel with the wrapper.
 
 ### Hints
+This is a good exercise for plan mode.  Before writing any code, ask Claude to
+think through the layering and file structure: "Think through how to structure
+the kernel port before writing any code."  Review the plan, push back on anything
+that feels off, then confirm — Claude will implement in one coherent pass rather
+than accumulating half-decisions across many prompts.
+
 "Port the kernel" is a large task.  Two additions keep it manageable:
 
 - Ask Claude to **start with the lowest layer**: "begin with the FAT12 arithmetic
-  functions — they have no dependencies and can be tested in isolation."
+  functions — they have no dependencies and can be tested in isolation." Note that this takes considerably more time.
 - Ask for **tests before moving up**: "write unit tests for each layer before
   starting the next one."
 
@@ -568,6 +582,12 @@ arithmetic, control flow, and basic I/O — enough to run simple programs.
 > run a given file."
 
 ### Hints
+Like the kernel, the interpreter benefits from plan mode before any code is
+written.  Ask Claude to design the expression evaluator and statement dispatcher
+first: "Think through how to structure a line-numbered BASIC interpreter before
+writing any code — expression parsing, statement dispatch, and the FOR/GOSUB
+stacks."  Agree on the structure, then proceed step by step.
+
 An interpreter is too large to produce and verify in one go.  Ask for it in
 four steps, testing after each one before moving to the next:
 
