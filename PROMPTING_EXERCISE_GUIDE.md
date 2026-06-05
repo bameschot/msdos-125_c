@@ -294,9 +294,7 @@ input/output and disk image files — plus the program entry point.
 
 ### Starting prompt
 
-> "Write a wrapper CLI application in C.  It should handle keyboard input and
-> screen output, and support disk reads and writes to a disk image file that is
-> loaded on start and saved on exit."
+> "Write a wrapper CLI application in C called msdos. It should handle keyboard input and screen output, and support disk reads and writes to a disk image file that is loaded on start and saved on exit. The purpose of the wrapper is to run the ported msdos in this wrapper. The wrapper must behave as the host of the operating system being ported."
 
 ### Hints
 One addition avoids a common pitfall with the editor you will add later:
