@@ -1,12 +1,12 @@
-# Prompting Exercise Guide: Porting MS-DOS 1.25 with Claude
+# Porting MS-DOS 1.25 with Claude
 
 A hands-on course in **using Claude to work with an unfamiliar codebase** —
 specifically, porting MS-DOS 1.25 from 8086 assembly to C.
 
 The assembly in `v1.25/source/` is roughly 12 000 lines of 1982-era code in a
 language most developers have never written.  That is the point.  You are not
-expected to learn 8086 assembly.  The exercises here are about developing the
-prompting habits that let you use Claude productively on *any* codebase you do
+expected to learn 8086 assembly.  The exercises here are about developing the 
+habits that let you use Claude productively on *any* codebase you do
 not fully understand.
 
 Each exercise has:
@@ -109,7 +109,7 @@ changed since the last commit?" to orient a new session quickly.
 4. **Use a review prompt when output is large.** Before accepting a substantial
    result, ask Claude to review it.  See *The Review Prompt* section below.
 
-5. **Keep a living README and CLAUDE.md.** After each exercise, ask Claude to
+5. **Keep a living README and REFERENCE.md.** After each exercise, ask Claude to
    update both files to reflect what has been built.  See *Living Documentation*
    below.
 
@@ -163,30 +163,30 @@ Use it after every exercise that produces non-trivial output.
 ## Living Documentation
 
 As the project grows across multiple sessions, Claude loses track of what has
-already been built.  A `README.md` and a `CLAUDE.md` that stay up to date solve
+already been built.  A `README.md` and a `REFERENCE.md` that stay up to date solve
 this: at the start of any new session you paste them in as context — or simply
-ask Claude to read them: "Read CLAUDE.md and README.md before we continue." —
+ask Claude to read them: "Read REFERENCE.md and README.md before we continue." —
 and Claude immediately knows the current state of the project.
 
 After each exercise, ask:
 
-> "Update README.md and CLAUDE.md to reflect what was just added."
+> "Update README.md and REFERENCE.md to reflect what was just added."
 
 Then run `/compact` before starting the next exercise.  Each exercise generates
 a lot of back-and-forth — code, test output, fixes, reviews — and the context
 window fills up quickly.  `/compact` summarises the conversation so far and
 discards the detail, keeping only what matters for the next step.  With
-up-to-date `CLAUDE.md` and `README.md` files already committed, almost nothing
+up-to-date `REFERENCE.md` and `README.md` files already committed, almost nothing
 important is lost: Claude can read those files to reconstruct the project state
 at any point.
 
 `README.md` should describe the project for a user: what it does, how to build
-it, and which commands are available.  `CLAUDE.md` should describe the project
+it, and which commands are available.  `REFERENCE.md` should describe the project
 for Claude: the architecture, the key design decisions, what files exist and what
 they do, and any rules that must be kept (such as the no-direct-I/O rule in the
 kernel).
 
-A good `CLAUDE.md` entry after Exercise 3 might read: *"The kernel in `src/kernel/`
+A good `REFERENCE.md` entry after Exercise 3 might read: *"The kernel in `src/kernel/`
 must never call printf, fread, or any POSIX function directly.  All I/O goes
 through the `bios_t` vtable defined in `bios.h`."*  That rule will then be
 applied consistently in every future session without you having to repeat it.
@@ -214,7 +214,7 @@ additions make the output more useful:
 - Ask for a **dependency diagram**: "add a short diagram showing which files
   call into which."
 
-Ask Claude to save the result as `CLAUDE.md` in the repository so it can be
+Ask Claude to save the result as `REFERENCE.md` in the repository so it can be
 used as context in future sessions.
 
 ### Quality bar
@@ -250,7 +250,7 @@ useful specifically for this port:
   All console and disk access goes through a struct of function pointers."
 
 This single rule prevents a class of design errors that are painful to fix later.
-Ask Claude to include it explicitly in the document so you can paste it into
+Ask Claude to include it explicitly in the document so you can read it into
 future prompts as a reminder.
 
 After getting the document, use the review prompt:
@@ -332,7 +332,7 @@ wrapper itself is sound:
   a non-existent image file produces an error rather than a crash."
 
 After completing this exercise, ask Claude to update `README.md` with build
-instructions and the `--format` usage, and update `CLAUDE.md` with a description
+instructions and the `--format` usage, and update `REFERENCE.md` with a description
 of the wrapper's role and file location.
 
 ### Quality bar
@@ -375,7 +375,7 @@ Port `MSDOS.ASM` to C.
 
 ### Starting prompt
 
-> Port the operating system kernel in MSDOS.ASM to C. Use the 8086 assembly to c document as the translation guide. keep the kernal compact, functional and maintain the scope of the MSDOS.ASM. write test cases to verify the created kernel. Integrate the kernel with the wrapper.
+> Port the operating system kernel in MSDOS.ASM to C. Use the 8086 assembly to c document as the translation guide. keep the kernal compact, functional and maintain the scope of the MSDOS.ASM. write test cases to verify the created kernel. integrate the kernel with the wrapper.
 
 ### Hints
 This is a good exercise for plan mode.  Before writing any code, ask Claude to
@@ -399,7 +399,7 @@ After each layer, use the review prompt before running it:
 > "Review the layer you just wrote.  What are the most likely correctness
 > problems?"
 
-When the kernel is complete, ask Claude to update `CLAUDE.md` with the file
+When the kernel is complete, ask Claude to update `REFERENCE.md` with the file
 layout, the vtable rule, and a brief description of each kernel layer.
 
 ### Quality bar
@@ -459,7 +459,7 @@ Commands that were *not* in the original — `ECHO`, `VER`, `CLS`, and `CHKDSK`
 exercise next.
 
 After the commands are working, ask Claude to update `README.md` with the command
-list and update `CLAUDE.md` with the command table structure so future sessions
+list and update `REFERENCE.md` with the command table structure so future sessions
 know how to add new commands.
 
 ### Quality bar
@@ -548,7 +548,7 @@ After receiving the implementation, use the review prompt:
 > handling or file save/load that I should test first?"
 
 Then test in that order.  Once the editor is working, ask Claude to update
-`CLAUDE.md` with how the editor is structured and note any key binding decisions
+`REFERENCE.md` with how the editor is structured and note any key binding decisions
 that were made — these are easy to forget and painful to rediscover.
 
 ### Quality bar
@@ -621,7 +621,7 @@ Use the review prompt after step 3:
 > with FOR/NEXT or GOSUB that I should test?"
 
 When the interpreter is complete, ask Claude to update `README.md` with a BASIC
-syntax summary and example programs, and update `CLAUDE.md` with the interpreter's
+syntax summary and example programs, and update `REFERENCE.md` with the interpreter's
 design — particularly the expression evaluator and the statement dispatch approach.
 
 ### Quality bar
@@ -666,7 +666,7 @@ Once you have the design confirmed, ask for the implementation:
 > "Implement it.  The shell prompt should show the current path."
 
 After this exercise, ask Claude to update both `README.md` (with the new commands
-and a subdirectory example) and `CLAUDE.md` (with how the current directory is
+and a subdirectory example) and `REFERENCE.md` (with how the current directory is
 tracked and how the disk layer was changed).
 
 ### Quality bar
@@ -715,7 +715,7 @@ After getting the test suite, use the review prompt:
 Anything that passes with a broken implementation is not testing anything useful —
 ask Claude to replace it.
 
-Update `CLAUDE.md` after this exercise to note how to run the tests and what each
+Update `REFERENCE.md` after this exercise to note how to run the tests and what each
 test file covers — this is especially useful when returning to the project after a break.
 
 ### Quality bar
@@ -733,13 +733,13 @@ fail if you deliberately break the thing it tests.
 ## The Session Pattern
 
 ```
-1. Context first    Paste CLAUDE.md and the translation reference, or ask Claude to read them.
+1. Context first    Read README.md, REFERENCE.md and the translation reference.
 2. One thing        One task or question per prompt.
 3. Constraints      State what must not happen — Claude will respect them.
 4. Review           Use the review prompt before running large results.
 5. Test             Run the code and observe; describe what you see.
 6. Iterate          Describe the observed symptom; ask for the cause.
-7. Document         Ask Claude to update README.md and CLAUDE.md.
+7. Document         Ask Claude to update README.md and REFERENCE.md.
 ```
 
 ### When to change approach
@@ -750,7 +750,7 @@ fail if you deliberately break the thing it tests.
 | Same problem after two fix attempts | "Explain what the code is supposed to do here, step by step" |
 | Output is too large to know where to start | Use the review prompt first, then test the areas it flags |
 | Unsure whether the result is correct | "What would a test that catches a bug here look like?" |
-| Starting a new session on an existing project | Paste CLAUDE.md or ask Claude to read it — either way, do it first |
+| Starting a new session on an existing project | Paste REFERENCE.md or ask Claude to read it — either way, do it first |
 
 ---
 
@@ -763,7 +763,7 @@ fail if you deliberately break the thing it tests.
 | "Write tests for X" alone | Produces happy-path tests only | Add "focus on edge cases and error conditions" |
 | Two unrelated tasks in one prompt | Hard to test separately | One topic per prompt |
 | Accepting output without reviewing | Misses predictable problems | Use the review prompt on any large result |
-| Starting a new session without context | Claude starts from scratch | Always open with CLAUDE.md |
+| Starting a new session without context | Claude starts from scratch | Always open with REFERENCE.md |
 
 ---
 
