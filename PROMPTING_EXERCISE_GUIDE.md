@@ -203,7 +203,7 @@ Understand what the source files in `v1.25/source/` do and how they relate.
 
 ### Starting prompt
 
-> "Analyse and describe the contents of the `v1.25/source/` folder."
+> "Analyse and describe the contents of the `v1.25/source/` folder in a document called REFERENCE.md placed in the root of the workspace."
 
 ### Hints
 That prompt works but tends to produce a long prose description.  Two small
@@ -240,7 +240,7 @@ Create a reference that maps 8086 assembly patterns to C equivalents.
 ### Starting prompt
 
 > "Create a reference document of 8086 assembly that can later be used to port
-> this project to C code."
+> this project to C code. Place it in the root of the workspace."
 
 ### Hints
 The starting prompt gets you a general reference.  Add one constraint to make it
