@@ -67,6 +67,27 @@ building the host wrapper in Exercise 4.
 
 ## Before You Start
 
+### Getting the exercise workspace
+
+The starting point for all exercises is packaged as **`exercise-workspace.zip`**,
+located in the root of this repository.
+
+To begin, decompress it into a fresh working directory:
+
+```sh
+unzip exercise-workspace.zip -d my-msdos-port
+cd my-msdos-port
+```
+
+This gives you a `v1.25/` folder containing the original MS-DOS 1.25 assembly
+source and companion files — everything you need to work through the exercises
+from scratch.  Do not copy anything from `src/` or `tests/`; those are the
+finished reference implementation and should only be consulted if you get
+completely stuck.
+
+Once extracted, follow the **Start with a git repository** step below before
+writing any code.
+
 ### What is in the repository
 
 ```

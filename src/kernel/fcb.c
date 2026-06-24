@@ -77,29 +77,6 @@ int fcb_movname(dos_t *dos, fcb_t *fcb)
 }
 
 /* -----------------------------------------------------------------------
- * Helper: scan directory entry starting at block 'block', offset 'off'.
- * Returns dirent_t* pointing into dos->dirbuf, or NULL if done.
- * ----------------------------------------------------------------------- */
-
-static dirent_t *get_dir_entry(dos_t *dos, dpb_t *dp,
-                               uint16_t *block, uint16_t *off)
-{
-    uint16_t ents_per_sec = dp->secsiz / DIRENT_SIZE;
-    uint16_t total_blocks = (dp->maxent + ents_per_sec - 1) / ents_per_sec;
-
-    while (*block < total_blocks) {
-        if (disk_dirread(dos, dp, *block) != 0) return NULL;
-        if (*off < dp->secsiz) {
-            dirent_t *de = (dirent_t *)(dos->dirbuf + *off);
-            return de;
-        }
-        (*block)++;
-        *off = 0;
-    }
-    return NULL;
-}
-
-/* -----------------------------------------------------------------------
  * FINDNAME — search directory for dos->name1
  * On success: dos->dirbuf has the entry; *out_bx = byte offset into dirbuf;
  * *out_si = offset of firclus; *out_bh is device index (negative) or drive.
@@ -183,8 +160,6 @@ int fcb_getname(dos_t *dos, fcb_t *fcb,
         return 0;
     }
 
-    /* Ensure FAT is current */
-    dos->thisdrv = dos->thisdrv;
     if (disk_fatread(dos) != 0) return -1;
     dpb_t *dp = dos->thisbp;
 
@@ -334,12 +309,6 @@ uint8_t dos_delete(dos_t *dos, fcb_t *fcb)
 {
     if (fcb_movname(dos, fcb) != 0) return DOS_ERR;
 
-    /* Check for *.* (DEL *.*) */
-    bool all = true;
-    for (int i = 0; i < 11; i++)
-        if (dos->name1[i] != '?') { all = false; break; }
-    if (all) dos->delall = 0;    /* use 0x00 instead of 0xE5 for DEL *.* */
-
     if (disk_fatread(dos) != 0) return DOS_ERR;
     dpb_t *dp = dos->thisbp;
 
@@ -351,7 +320,7 @@ uint8_t dos_delete(dos_t *dos, fcb_t *fcb)
     bool deleted_any = false;
     while (found == 0) {
         dirent_t *de = (dirent_t *)(dos->dirbuf + bx);
-        de->name[0]  = dos->delall ? dos->delall : 0xE5;
+        de->name[0]  = DIRENT_FREE;
         dos->dirtydir = 1;
 
         if (de->firclus && de->firclus < dp->maxclus)

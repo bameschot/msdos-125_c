@@ -41,5 +41,3 @@ uint8_t dos_srchnxt(dos_t *dos, fcb_t *fcb);
  * Returns 0=unambiguous, 1=wildcard, 0xFF=error. */
 uint8_t dos_makefcb(dos_t *dos, const char **src, fcb_t *fcb, uint8_t flags);
 
-/* Write 11-char DOS name at *dst; advance dst. */
-void fcb_put_name(const uint8_t name11[11], char *buf);

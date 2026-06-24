@@ -74,7 +74,7 @@ typedef struct dos_s {
     uint8_t  attrib;
     bool     extfcb;                /* extended FCB in use */
     bool     creating;
-    uint8_t  delall;                /* 0xE5 when DEL *.* */
+    uint8_t  delall;                /* delete marker (initialised to 0xE5 by fcb_movname) */
 
     /* ----- per-transfer state (SETUP sets these) ----- */
     uint8_t  thisdrv;

@@ -55,14 +55,13 @@ static void build_dpb(dos_t *dos, dpb_t *dp, uint8_t devnum,
     uint16_t data_secs = (uint16_t)(dpt->total_sectors - dp->firrec);
     dp->maxclus  = (uint16_t)(data_secs / (dp->clusmsk + 1) + 1);
 
-    /* Point FAT at pool (skip 2-byte header) */
+    /* Point FAT into the pool buffer, skipping the 2-byte header.
+     * fat[-1] (fat_dirty) and fat[-2] (dev_dirty) are aliases for
+     * fb->fat_dirty and fb->dev_dirty via the negative-index convention. */
     fat_buf_t *fb = &dos->fat_pool[devnum];
     fb->dev_dirty = devnum & 0x3F;
     fb->fat_dirty = 0;
     dp->fat       = fb->data;
-    /* Mark FAT dirty so it gets read on first access */
-    dp->fat[-1]   = 0;   /* not dirty yet */
-    dp->fat[-2]   = devnum & 0x3F;
 }
 
 /* -----------------------------------------------------------------------

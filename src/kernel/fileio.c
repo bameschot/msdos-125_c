@@ -24,8 +24,9 @@ uint32_t fileio_getrec(const fcb_t *fcb)
 
 void fileio_setnrex(fcb_t *fcb, uint32_t new_pos, uint16_t reccnt, uint8_t dskerr)
 {
-    /* Encode new_pos (the next sequential position) into NR and EXTENT.
-     * Also update the RR (random record) field with the same value. */
+    /* Encode new_pos into NR/EXTENT and mirror into RR.
+     * reccnt/dskerr are kept for the assembly-compatible signature but
+     * callers that need them use dos->reccnt / dos->dskerr directly. */
     (void)reccnt; (void)dskerr;
     fcb->nr     = (uint8_t)(new_pos & 0x7F);
     fcb->extent = (uint16_t)(new_pos >> 7);
@@ -141,8 +142,7 @@ static uint8_t read_device(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t cou
 
 static uint8_t write_device(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
 {
-    uint8_t dev   = fcb->devid & 0x3F & ~(uint8_t)(FCB_DEVID_DEVICE >> 1);
-    dev &= 0x3F;
+    uint8_t dev = fcb->devid & 0x3F;
     uint16_t recsiz = fcb->recsiz ? fcb->recsiz : 128;
     uint32_t total  = (uint32_t)count * recsiz;
     const uint8_t *src = dos->dmaadd;
@@ -200,6 +200,8 @@ static uint8_t do_load(dos_t *dos, fcb_t *fcb, uint32_t recpos, uint16_t count)
         dma       += r.bytcnt1;
         bytes_read += r.bytcnt1;
         sic++;
+        /* Advance to next cluster when all sectors in this one are consumed.
+         * clusmsk = secs_per_cluster - 1, so sic > clusmsk means wrap. */
         if (sic > dp->clusmsk) {
             uint16_t next = fat_unpack(dp->fat, clus);
             if (!fat12_is_eof(next)) {
@@ -371,6 +373,13 @@ io_err:
  * Public API
  * ----------------------------------------------------------------------- */
 
+/* Read the 32-bit random record field from FCB (little-endian, 4 bytes). */
+static inline uint32_t rr_get_pos(const fcb_t *fcb)
+{
+    return (uint32_t)fcb->rr[0] | ((uint32_t)fcb->rr[1] << 8)
+         | ((uint32_t)fcb->rr[2] << 16) | ((uint32_t)fcb->rr[3] << 24);
+}
+
 uint8_t dos_seqrd(dos_t *dos, fcb_t *fcb)
 {
     uint32_t pos = fileio_getrec(fcb);
@@ -393,22 +402,18 @@ uint8_t dos_seqwrt(dos_t *dos, fcb_t *fcb)
 
 uint8_t dos_rndrd(dos_t *dos, fcb_t *fcb)
 {
-    uint32_t pos = (uint32_t)fcb->rr[0] | ((uint32_t)fcb->rr[1] << 8)
-                 | ((uint32_t)fcb->rr[2] << 16) | ((uint32_t)fcb->rr[3] << 24);
-    return do_load(dos, fcb, pos, 1);
+    return do_load(dos, fcb, rr_get_pos(fcb), 1);
 }
 
 uint8_t dos_rndwrt(dos_t *dos, fcb_t *fcb)
 {
-    uint32_t pos = (uint32_t)fcb->rr[0] | ((uint32_t)fcb->rr[1] << 8)
-                 | ((uint32_t)fcb->rr[2] << 16) | ((uint32_t)fcb->rr[3] << 24);
-    return do_store(dos, fcb, pos, 1);
+    return do_store(dos, fcb, rr_get_pos(fcb), 1);
 }
 
 uint8_t dos_blkrd(dos_t *dos, fcb_t *fcb, uint16_t count, uint16_t *out_count)
 {
-    uint32_t pos = (uint32_t)fcb->rr[0] | ((uint32_t)fcb->rr[1] << 8)
-                 | ((uint32_t)fcb->rr[2] << 16);
+    /* BLK functions use only 24 bits of RR (rr[2] is the high byte) */
+    uint32_t pos = rr_get_pos(fcb) & 0x00FFFFFF;
     uint8_t rc = do_load(dos, fcb, pos, count);
     if (out_count) *out_count = dos->reccnt;
     return rc;
@@ -416,8 +421,7 @@ uint8_t dos_blkrd(dos_t *dos, fcb_t *fcb, uint16_t count, uint16_t *out_count)
 
 uint8_t dos_blkwrt(dos_t *dos, fcb_t *fcb, uint16_t count, uint16_t *out_count)
 {
-    uint32_t pos = (uint32_t)fcb->rr[0] | ((uint32_t)fcb->rr[1] << 8)
-                 | ((uint32_t)fcb->rr[2] << 16);
+    uint32_t pos = rr_get_pos(fcb) & 0x00FFFFFF;
     uint8_t rc = do_store(dos, fcb, pos, count);
     if (out_count) *out_count = dos->reccnt;
     return rc;

@@ -54,7 +54,9 @@ typedef struct dpb_s {
     uint16_t maxclus;       /* total clusters + 1 */
     uint8_t  fatsiz;        /* sectors per FAT copy */
     uint16_t firdir;        /* first directory sector */
-    /* fat: pointer into the FAT buffer pool; fat[-2]=devdirty, fat[-1]=fatdirty */
+    /* Points into fat_buf_t.data (see dos.h).  fat[-1]=FAT dirty flag,
+     * fat[-2]=device index; negative indexing is safe because fat_buf_t
+     * allocates a 2-byte header before data[]. */
     uint8_t *fat;
 } dpb_t;
 
